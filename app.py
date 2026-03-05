@@ -12,7 +12,6 @@ import plotly.express as px
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv" 
 
-
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
 # --- 2. BRANDING & LOGO ---
@@ -46,14 +45,9 @@ def load_dsat_data():
     try:
         df = pd.read_csv(DSAT_URL)
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
-        
-        # --- NEW DATE FORMAT FIX FOR DSAT ---
-        # Handles 19/02/2026 01:38:55
+        # DSAT Format: 19/02/2026 01:38:55
         df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-        
-        # Normalize to midnight so it matches KPI dates (which have no time)
-        df['Date'] = df['Date'].dt.normalize()
-        
+        # Drop rows where date is empty to prevent 'NaTType' error
         return df.dropna(subset=['Date'])
     except: return None
 
@@ -80,7 +74,7 @@ if user_email:
                 if pd.isna(val) or val == 0: return "-"
                 return f"{val:.1f}{suffix}"
 
-            # --- FILTERING LOGIC ---
+            # --- SELECTION & FILTERING LOGIC ---
             if freq == "Daily":
                 available_dates = sorted(user_kpi['Date'].unique(), reverse=True)
                 selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
@@ -88,7 +82,10 @@ if user_email:
                 chart_df = filtered_kpi
                 
                 if dsat_df is not None and not dsat_df.empty:
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Date'] == selected_val)]
+                    # Normalize time so DSAT at 1:30 AM matches the KPI Date
+                    temp_dsat = dsat_df.copy()
+                    temp_dsat['Date_Only'] = temp_dsat['Date'].dt.normalize()
+                    filtered_dsat = temp_dsat[(temp_dsat['Email'].str.lower() == user_email) & (temp_dsat['Date_Only'] == selected_val)]
                 else: filtered_dsat = pd.DataFrame()
 
             elif freq == "Weekly":
@@ -96,25 +93,29 @@ if user_email:
                 user_kpi['W_End'] = user_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
                 user_kpi['Week_Range'] = (user_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + user_kpi['W_End'].dt.strftime('%d %b %Y'))
                 selected_val = st.selectbox("Select Week:", user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique())
+                
                 filtered_kpi = user_kpi[user_kpi['Week_Range'] == selected_val]
                 chart_df = filtered_kpi.sort_values('Date')
                 
                 if dsat_df is not None and not dsat_df.empty:
-                    dsat_df['W_Start'] = dsat_df['Date'] - pd.to_timedelta(dsat_df['Date'].dt.dayofweek + 1 % 7, unit='d')
-                    dsat_df['W_End'] = dsat_df['W_Start'] + pd.to_timedelta(6, unit='d')
-                    dsat_df['Week_Range'] = (dsat_df['W_Start'].dt.strftime('%d %b %Y') + " - " + dsat_df['W_End'].dt.strftime('%d %b %Y'))
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Week_Range'] == selected_val)]
+                    temp_dsat = dsat_df.copy()
+                    temp_dsat['W_Start'] = temp_dsat['Date'] - pd.to_timedelta(temp_dsat['Date'].dt.dayofweek + 1 % 7, unit='d')
+                    temp_dsat['W_End'] = temp_dsat['W_Start'] + pd.to_timedelta(6, unit='d')
+                    temp_dsat['Week_Range'] = (temp_dsat['W_Start'].dt.strftime('%d %b %Y') + " - " + temp_dsat['W_End'].dt.strftime('%d %b %Y'))
+                    filtered_dsat = temp_dsat[(temp_dsat['Email'].str.lower() == user_email) & (temp_dsat['Week_Range'] == selected_val)]
                 else: filtered_dsat = pd.DataFrame()
 
             else: # Monthly
                 user_kpi['Month_Label'] = user_kpi['Date'].dt.to_period('M').apply(lambda r: r.start_time)
                 selected_val = st.selectbox("Select Month:", sorted(user_kpi['Month_Label'].unique(), reverse=True), format_func=lambda x: x.strftime('%B %Y'))
+                
                 filtered_kpi = user_kpi[user_kpi['Month_Label'] == selected_val]
                 chart_df = filtered_kpi.sort_values('Date')
                 
                 if dsat_df is not None and not dsat_df.empty:
-                    dsat_df['Month_Label'] = dsat_df['Date'].dt.to_period('ME').apply(lambda r: r.start_time)
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Month_Label'] == selected_val)]
+                    temp_dsat = dsat_df.copy()
+                    temp_dsat['Month_Label'] = temp_dsat['Date'].dt.to_period('M').apply(lambda r: r.start_time)
+                    filtered_dsat = temp_dsat[(temp_dsat['Email'].str.lower() == user_email) & (temp_dsat['Month_Label'] == selected_val)]
                 else: filtered_dsat = pd.DataFrame()
 
             # --- PERFORMANCE SUMMARY ---
@@ -137,7 +138,7 @@ if user_email:
             v3.metric("Total Call Abandons", int(filtered_kpi['Call_Abandons'].sum()))
             v4.metric("Total MOB", int(filtered_kpi['MOB'].sum()))
 
-            # --- TRENDS ---
+            # --- INDIVIDUAL TREND GRAPHS ---
             st.divider()
             st.subheader(f"Trends for Selected Period")
 
@@ -154,27 +155,22 @@ if user_email:
                 st.plotly_chart(create_chart(chart_df, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
                 st.plotly_chart(create_chart(chart_df, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
 
-            # --- DSAT ANALYSIS & FEEDBACK ---
+            # --- DSAT ANALYSIS SECTION ---
             st.divider()
             dsat_count = len(filtered_dsat)
             st.subheader(f"🚫 DSAT Analysis & Feedback ({dsat_count})")
             
             if not filtered_dsat.empty:
-                # We sort by the original Date (including time) if possible, 
-                # but show the formatted date to the user.
                 st.dataframe(
                     filtered_dsat[['Date', 'Chat_Link', 'Feedback']].sort_values('Date', ascending=False),
-                    column_config={
-                        "Date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                        "Chat_Link": st.column_config.LinkColumn("View Chat")
-                    },
+                    column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")},
                     width='stretch', hide_index=True
                 )
             else:
                 st.info(f"No DSAT records found for this period.")
 
             st.divider()
-            st.subheader("📋 Raw Data History")
-            st.dataframe(user_kpi.sort_values('Date', ascending=False), width='stretch')
+            st.subheader("📋 Filtered Raw Data")
+            st.dataframe(filtered_kpi.sort_values('Date', ascending=False), width='stretch')
 else:
     st.info("👈 Enter your advisor email in the sidebar to access the portal.")
