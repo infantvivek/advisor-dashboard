@@ -2,35 +2,33 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- 1. SETTINGS ---
-# Ensure this link is for the "KPI data" tab specifically
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
+# 1. Your Google Sheet Link (KPI Data Tab)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv"
 
-st.set_page_config(page_title="Advisor Performance Dashboard", layout="wide")
+st.set_page_config(page_title="KPI Performance Portal", layout="wide")
 
 @st.cache_data(ttl=60)
 def load_data():
     try:
-        # Load data and clean column names from invisible characters/spaces
         df = pd.read_csv(SHEET_URL)
-        df.columns = df.columns.str.strip().str.replace('﻿', '') # Removes BOM characters
+        df.columns = df.columns.str.strip().str.replace('\ufeff', '')
         
-        # Convert the specific Feb'28'26 format
+        # Parse the custom date format: Feb'28'26
         df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
         
-        # Ensure numeric columns are clean
+        # Clean numeric data
         metrics = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 'OB_Calls', 'QA_Calls']
         for col in metrics:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        return df
+        return df.dropna(subset=['Date'])
     except Exception as e:
-        st.error(f"Error loading sheet: {e}")
+        st.error(f"Error loading data: {e}")
         return None
 
-# --- 2. USER INTERFACE ---
-st.title("📊 Advisor Performance Portal")
+# --- UI START ---
+st.title("📈 Advisor Performance Portal")
 
 user_email = st.sidebar.text_input("Login with Email").strip().lower()
 
@@ -38,64 +36,89 @@ if user_email:
     df = load_data()
     
     if df is not None:
-        # Filter for the specific advisor
-        user_df = df[df['Email'].str.lower() == user_email].copy()
+        # Filter for the logged-in advisor
+        user_df = df[df['Email'].str.lower() == user_email].copy().sort_values('Date')
 
         if user_df.empty:
-            st.warning(f"No records found for {user_email}. Check your Sheet's Email column.")
+            st.warning(f"No data found for {user_email}. Check your Sheet for this email.")
         else:
             advisor_name = user_df['Advisor Name'].iloc[0]
-            st.header(f"Performance Summary: {advisor_name}")
+            st.header(f"Performance for {advisor_name}")
 
             # --- FREQUENCY SELECTOR ---
-            st.subheader("Filter Stats")
-            freq = st.radio("Select Frequency", ["Daily", "Weekly", "Monthly"], horizontal=True)
+            st.subheader("Select View Frequency")
+            freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            # Process data based on frequency
-            plot_df = user_df.sort_values('Date')
-            if freq == "Weekly":
-                plot_df = plot_df.resample('W', on='Date').mean(numeric_only=True).reset_index()
+            # --- LOGIC FOR DIFFERENT FREQUENCIES ---
+            if freq == "Daily":
+                # Requirements: Last 30 entries
+                display_df = user_df.tail(30)
+                selected_data = display_df # Metrics reflect last 30 entries
+                st.info("Showing the last 30 available daily entries.")
+
+            elif freq == "Weekly":
+                # Requirement: Option to select week (Starting Sunday)
+                user_df['Week'] = user_df['Date'].dt.to_period('W-SUN').apply(lambda r: r.start_time)
+                available_weeks = sorted(user_df['Week'].unique(), reverse=True)
+                
+                selected_week = st.selectbox("Select Week (Week Starts Sunday):", available_weeks, 
+                                            format_func=lambda x: f"Week of {x.strftime('%d %b %Y')}")
+                
+                selected_data = user_df[user_df['Week'] == selected_week]
+                # Trend data aggregates by week
+                display_df = user_df.groupby('Week').mean(numeric_only=True).reset_index().rename(columns={'Week': 'Date'})
+
             elif freq == "Monthly":
-                plot_df = plot_df.resample('M', on='Date').mean(numeric_only=True).reset_index()
+                # Requirement: Option to select month
+                user_df['Month'] = user_df['Date'].dt.to_period('M').apply(lambda r: r.start_time)
+                available_months = sorted(user_df['Month'].unique(), reverse=True)
+                
+                selected_month = st.selectbox("Select Month:", available_months, 
+                                             format_func=lambda x: x.strftime('%B %Y'))
+                
+                selected_data = user_df[user_df['Month'] == selected_month]
+                # Trend data aggregates by month
+                display_df = user_df.groupby('Month').mean(numeric_only=True).reset_index().rename(columns={'Month': 'Date'})
 
-            # --- TOP LEVEL METRICS (Latest Available) ---
-            latest = plot_df.iloc[-1]
+            # --- SUMMARY METRICS ---
+            st.markdown("---")
+            st.subheader(f"Summary: {freq} Selection")
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Shift Score", f"{latest['Shift_Score']:.1f}%")
-            m2.metric("IA Hours", f"{latest['IA_Hours']:.1f}")
-            m3.metric("Satisfied Survey", f"{latest['Satisfied_Survey']:.1f}%")
-            m4.metric("Sent Rate", f"{latest['Sent_Rate']:.1f}%")
-
-            st.divider()
-
-            # --- INDIVIDUAL PERFORMANCE TRENDS ---
-            st.subheader(f"{freq} Performance Trends")
             
-            # Row 1: Quality Metrics
-            col1, col2 = st.columns(2)
-            with col1:
-                fig_csat = px.line(plot_df, x='Date', y='Satisfied_Survey', markers=True, 
-                                   title="Satisfied Survey % Trend", color_discrete_sequence=['#2E86C1'])
-                st.plotly_chart(fig_csat, use_container_width=True)
-            with col2:
-                fig_sent = px.line(plot_df, x='Date', y='Sent_Rate', markers=True, 
-                                   title="Sent Rate % Trend", color_discrete_sequence=['#239B56'])
-                st.plotly_chart(fig_sent, use_container_width=True)
+            # Calculate averages for the selected period
+            avg_stats = selected_data.mean(numeric_only=True)
+            
+            m1.metric("Shift Score", f"{avg_stats.get('Shift_Score', 0):.1f}%")
+            m2.metric("IA Hours", f"{avg_stats.get('IA_Hours', 0):.2f}")
+            m3.metric("Satisfied Survey", f"{avg_stats.get('Satisfied_Survey', 0):.1f}%")
+            m4.metric("Sent Rate", f"{avg_stats.get('Sent_Rate', 0):.1f}%")
 
-            # Row 2: Adherence Metrics
-            col3, col4 = st.columns(2)
-            with col3:
-                fig_ia = px.area(plot_df, x='Date', y='IA_Hours', 
-                                 title="IA Hours Trend", color_discrete_sequence=['#F39C12'])
-                st.plotly_chart(fig_ia, use_container_width=True)
-            with col4:
-                fig_shift = px.line(plot_df, x='Date', y='Shift_Score', markers=True, 
-                                    title="Shift Score Trend", color_discrete_sequence=['#E74C3C'])
-                st.plotly_chart(fig_shift, use_container_width=True)
+            # --- PERFORMANCE TRENDS ---
+            st.markdown("---")
+            st.subheader(f"Individual {freq} Performance Trends")
+            
+            # Helper to create consistent charts
+            def make_trend(data, y_col, title, color):
+                fig = px.line(data, x='Date', y=y_col, markers=True, title=title)
+                fig.update_traces(line_color=color)
+                fig.update_layout(xaxis_title="Date", yaxis_title=y_col)
+                return fig
 
-            # --- LOGS ---
-            with st.expander("View Detailed Raw Logs"):
-                st.dataframe(user_df.sort_values('Date', ascending=False))
+            row1_col1, row1_col2 = st.columns(2)
+            with row1_col1:
+                st.plotly_chart(make_trend(display_df, 'Shift_Score', "Shift Score Trend", "#e74c3c"), use_container_width=True)
+            with row1_col2:
+                st.plotly_chart(make_trend(display_df, 'Satisfied_Survey', "Satisfied Survey % Trend", "#3498db"), use_container_width=True)
+
+            row2_col1, row2_col2 = st.columns(2)
+            with row2_col1:
+                st.plotly_chart(make_trend(display_df, 'Sent_Rate', "Sent Rate % Trend", "#2ecc71"), use_container_width=True)
+            with row2_col2:
+                st.plotly_chart(make_trend(display_df, 'IA_Hours', "IA Hours Trend", "#f39c12"), use_container_width=True)
+
+            # --- RAW LOGS ---
+            with st.expander("View Detailed Logs for this Selection"):
+                st.dataframe(selected_data.sort_values('Date', ascending=False))
 
 else:
-    st.info("👈 Please enter your email in the sidebar to view your metrics.")
+    st.info("👈 Enter your advisor email in the sidebar to begin.")
