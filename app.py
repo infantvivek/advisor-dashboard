@@ -1,13 +1,15 @@
 
 
 # --- 1. DATA SOURCE LINKS ---
+# Ensure these links point to the specific tabs in your Google Sheet (Published as CSV)
+#KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
+#DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv" 
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
 # --- 1. DATA SOURCE LINKS ---
-# Ensure these links point to the specific tabs in your Google Sheet (Published as CSV)
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv" 
 
@@ -17,7 +19,6 @@ st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wid
 def add_branding():
     col1, col2 = st.columns([1, 8])
     with col1:
-        # HighLevel Logo
         st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
     with col2:
         st.title("The Go Getters")
@@ -29,10 +30,7 @@ def load_kpi_data():
         df = pd.read_csv(KPI_URL)
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
         df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
-        
-        num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 
-                    'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
-        
+        num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
         for col in num_cols:
             if col in df.columns:
                 if df[col].dtype == object:
@@ -46,9 +44,8 @@ def load_dsat_data():
     try:
         df = pd.read_csv(DSAT_URL)
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
-        # Assuming DSAT sheet uses a standard date format or the same custom one
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        return df.dropna(subset=['Date'])
+        return df
     except: return None
 
 # --- UI START ---
@@ -68,29 +65,19 @@ if user_email:
         else:
             advisor_name = user_kpi['Advisor Name'].iloc[0]
             st.sidebar.success(f"User: {advisor_name}")
-            
             freq = st.radio("Select View Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            # --- SHARED FILTERING LOGIC ---
             # Helper for metrics
             def format_val(val, suffix="%"):
-                if pd.isna(val) or val == 0:
-                    return "-"
+                if pd.isna(val) or val == 0: return "-"
                 return f"{val:.1f}{suffix}"
 
-            # Aggregation rules for Weekly/Monthly charts
-            agg_rules = {
-                'Shift_Score': 'mean', 'IA_Hours': 'mean', 'Sent_Rate': 'mean', 'Satisfied_Survey': 'mean',
-                'OB_Calls': 'sum', 'QA_Calls': 'sum', 'Call_Abandons': 'sum', 'MOB': 'sum'
-            }
-
+            # --- FILTERING LOGIC ---
             if freq == "Daily":
                 available_dates = sorted(user_kpi['Date'].unique(), reverse=True)
                 selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
-                
                 filtered_kpi = user_kpi[user_kpi['Date'] == selected_val]
                 chart_df = filtered_kpi
-                
                 if dsat_df is not None:
                     filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Date'] == selected_val)]
                 else: filtered_dsat = pd.DataFrame()
@@ -99,13 +86,9 @@ if user_email:
                 user_kpi['W_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
                 user_kpi['W_End'] = user_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
                 user_kpi['Week_Range'] = (user_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + user_kpi['W_End'].dt.strftime('%d %b %Y'))
-                
-                week_options = user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
-                selected_val = st.selectbox("Select Week:", week_options)
-                
+                selected_val = st.selectbox("Select Week:", user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique())
                 filtered_kpi = user_kpi[user_kpi['Week_Range'] == selected_val]
                 chart_df = filtered_kpi.sort_values('Date')
-                
                 if dsat_df is not None:
                     dsat_df['W_Start'] = dsat_df['Date'] - pd.to_timedelta(dsat_df['Date'].dt.dayofweek + 1 % 7, unit='d')
                     dsat_df['W_End'] = dsat_df['W_Start'] + pd.to_timedelta(6, unit='d')
@@ -115,25 +98,28 @@ if user_email:
 
             else: # Monthly
                 user_kpi['Month_Label'] = user_kpi['Date'].dt.to_period('M').apply(lambda r: r.start_time)
-                month_options = sorted(user_kpi['Month_Label'].unique(), reverse=True)
-                selected_val = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
-                
+                selected_val = st.selectbox("Select Month:", sorted(user_kpi['Month_Label'].unique(), reverse=True), format_func=lambda x: x.strftime('%B %Y'))
                 filtered_kpi = user_kpi[user_kpi['Month_Label'] == selected_val]
                 chart_df = filtered_kpi.sort_values('Date')
-                
                 if dsat_df is not None:
                     dsat_df['Month_Label'] = dsat_df['Date'].dt.to_period('M').apply(lambda r: r.start_time)
                     filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Month_Label'] == selected_val)]
                 else: filtered_dsat = pd.DataFrame()
 
-            # --- SUMMARY METRICS ---
+            # --- PERFORMANCE SUMMARY ---
             st.markdown("---")
             st.subheader("Performance Summary")
-            m1, m2, m3, m4 = st.columns(4)
+            
+            # MATH FOR AVG DSAT
+            avg_satisfied = filtered_kpi['Satisfied_Survey'].mean()
+            avg_dsat_calc = 100 - avg_satisfied if not pd.isna(avg_satisfied) else None
+
+            m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("Avg Shift Score", format_val(filtered_kpi['Shift_Score'].mean()))
             m2.metric("Avg IA Hours", format_val(filtered_kpi['IA_Hours'].mean(), "h"))
-            m3.metric("Avg Satisfied Survey", format_val(filtered_kpi['Satisfied_Survey'].mean()))
-            m4.metric("Avg Sent Rate", format_val(filtered_kpi['Sent_Rate'].mean()))
+            m3.metric("Avg Satisfied Survey", format_val(avg_satisfied))
+            m4.metric("Avg DSAT %", format_val(avg_dsat_calc)) # New Metric
+            m5.metric("Avg Sent Rate", format_val(filtered_kpi['Sent_Rate'].mean()))
 
             v1, v2, v3, v4 = st.columns(4)
             v1.metric("Total OB Calls", int(filtered_kpi['OB_Calls'].sum()))
@@ -141,46 +127,38 @@ if user_email:
             v3.metric("Total Call Abandons", int(filtered_kpi['Call_Abandons'].sum()))
             v4.metric("Total MOB", int(filtered_kpi['MOB'].sum()))
 
-            # --- TREND GRAPHS ---
+            # --- TRENDS ---
             st.divider()
             st.subheader(f"Trends for: {selected_val if freq != 'Daily' else selected_val.strftime('%d %b %Y')}")
-            
             t_col1, t_col2 = st.columns(2)
             with t_col1:
                 if freq == "Daily":
                     st.plotly_chart(px.bar(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], barmode='group', title="Quality (Daily)"), width='stretch')
                 else:
                     st.plotly_chart(px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], markers=True, title="Quality Trend"), width='stretch')
-            
             with t_col2:
                 if freq == "Daily":
                     st.plotly_chart(px.bar(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], barmode='group', title="Satisfaction & IA (Daily)"), width='stretch')
                 else:
                     st.plotly_chart(px.line(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], markers=True, title="Satisfaction & IA Trend"), width='stretch')
 
-            v_col1, v_col2 = st.columns(2)
-            with v_col1:
-                st.plotly_chart(px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls'], barmode='group', title="Call Volume Breakdown"), width='stretch')
-            with v_col2:
-                st.plotly_chart(px.bar(chart_df, x='Date', y=['Call_Abandons', 'MOB'], barmode='group', title="Abandons & MOB Breakdown"), width='stretch')
-
             # --- DSAT ANALYSIS SECTION ---
             st.divider()
-            st.subheader("🚫 DSAT Analysis & Feedback")
+            dsat_count = len(filtered_dsat)
+            st.subheader(f"🚫 DSAT Analysis & Feedback ({dsat_count})")
+            
             if not filtered_dsat.empty:
                 st.dataframe(
                     filtered_dsat[['Date', 'Chat_Link', 'Feedback']].sort_values('Date', ascending=False),
                     column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")},
-                    width='stretch',
-                    hide_index=True
+                    width='stretch', hide_index=True
                 )
             else:
-                st.info(f"Great job! No DSAT records found for this {freq.lower()} period.")
+                st.info(f"No DSAT records found for this period.")
 
-            # --- RAW DATA ---
             st.divider()
-            st.subheader("📋 Full Record Details (Filtered)")
+            st.subheader("📋 Raw Record Details")
             st.dataframe(filtered_kpi.sort_values('Date', ascending=False), width='stretch')
 
 else:
-    st.info("👈 Please enter your email in the sidebar to access The Go Getters portal.")
+    st.info("👈 Enter your email in the sidebar to access The Go Getters portal.")
