@@ -8,29 +8,24 @@ CSAT_URL = "PASTE_YOUR_CSAT_SHEET_CSV_LINK_HERE"
 
 st.set_page_config(page_title="Advisor Performance Portal", layout="wide")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def load_kpi_data():
     try:
         df = pd.read_csv(KPI_URL)
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
         df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
         
-        metrics = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 'OB_Calls', 'QA_Calls']
-        for col in metrics:
+        # Define all columns to be converted to numbers
+        num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 
+                    'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB', 
+                    'Avg_OB_Time', 'Avg_QA_Time']
+        
+        for col in num_cols:
             if col in df.columns:
                 if df[col].dtype == object:
-                    df[col] = df[col].str.replace('%', '')
+                    df[col] = df[col].str.replace('%', '').str.strip()
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df.dropna(subset=['Date'])
-    except: return None
-
-@st.cache_data(ttl=60)
-def load_csat_data():
-    try:
-        df = pd.read_csv(CSAT_URL)
-        df.columns = df.columns.str.strip().str.replace('\ufeff', '')
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        return df
     except: return None
 
 # --- UI START ---
@@ -40,7 +35,6 @@ user_email = st.sidebar.text_input("Login with Email").strip().lower()
 
 if user_email:
     kpi_df = load_kpi_data()
-    csat_df = load_csat_data()
     
     if kpi_df is not None:
         user_kpi = kpi_df[kpi_df['Email'].str.lower() == user_email].copy().sort_values('Date')
@@ -49,95 +43,86 @@ if user_email:
             st.warning("No KPI data found for this email.")
         else:
             advisor_name = user_kpi['Advisor Name'].iloc[0]
-            
-            # Layout Header
-            head_col1, head_col2 = st.columns([3, 1])
-            with head_col1:
-                st.header(f"Welcome, {advisor_name}")
+            st.header(f"Welcome, {advisor_name}")
             
             freq = st.radio("Frequency View:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            # --- SELECTION LOGIC ---
+            # --- AGGREGATION LOGIC ---
+            # We tell the app which columns to SUM and which to AVERAGE
+            agg_rules = {
+                'Shift_Score': 'mean', 'IA_Hours': 'mean', 'Sent_Rate': 'mean', 'Satisfied_Survey': 'mean',
+                'OB_Calls': 'sum', 'QA_Calls': 'sum', 'Call_Abandons': 'sum', 'MOB': 'sum',
+                'Avg_OB_Time': 'mean', 'Avg_QA_Time': 'mean'
+            }
+
             if freq == "Daily":
                 available_dates = sorted(user_kpi['Date'].unique(), reverse=True)
-                selected_date = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
-                
-                selected_data = user_kpi[user_kpi['Date'] == selected_date]
-                # Last 30 days for trend
-                display_df = user_kpi[user_kpi['Date'] <= selected_date].tail(30)
-                report_name = f"{advisor_name}_Daily_{selected_date.strftime('%Y-%m-%d')}.csv"
+                selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
+                filtered_df = user_kpi[user_kpi['Date'] == selected_val]
+                chart_df = user_kpi[user_kpi['Date'] <= selected_val].tail(30)
 
             elif freq == "Weekly":
-                # Sunday start logic
-                user_kpi['Week_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
-                user_kpi['Week_End'] = user_kpi['Week_Start'] + pd.to_timedelta(6, unit='d')
-                user_kpi['Week_Range'] = (user_kpi['Week_Start'].dt.strftime('%d %b %Y') + " - " + user_kpi['Week_End'].dt.strftime('%d %b %Y'))
+                user_kpi['W_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
+                user_kpi['W_End'] = user_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
+                user_kpi['Week_Range'] = (user_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + user_kpi['W_End'].dt.strftime('%d %b %Y'))
                 
-                week_options = user_kpi.sort_values('Week_Start', ascending=False)['Week_Range'].unique()
-                selected_range = st.selectbox("Select Week:", week_options)
+                week_options = user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
+                selected_val = st.selectbox("Select Week:", week_options)
+                filtered_df = user_kpi[user_kpi['Week_Range'] == selected_val]
                 
-                selected_data = user_kpi[user_kpi['Week_Range'] == selected_range]
-                display_df = user_kpi.groupby('Week_Range').mean(numeric_only=True).reset_index()
-                display_df['Sort_Date'] = pd.to_datetime(display_df['Week_Range'].str.split(' - ').str[0])
-                display_df = display_df.sort_values('Sort_Date').rename(columns={'Sort_Date': 'Date'})
-                report_name = f"{advisor_name}_Weekly_{selected_range}.csv"
+                chart_df = user_kpi.groupby('Week_Range').agg(agg_rules).reset_index()
+                chart_df['Sort_Date'] = pd.to_datetime(chart_df['Week_Range'].str.split(' - ').str[0])
+                chart_df = chart_df.sort_values('Sort_Date').rename(columns={'Sort_Date': 'Date'})
 
             else: # Monthly
                 user_kpi['Month_Val'] = user_kpi['Date'].dt.to_period('M').apply(lambda r: r.start_time)
                 month_options = sorted(user_kpi['Month_Val'].unique(), reverse=True)
-                selected_month = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
+                selected_val = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
+                filtered_df = user_kpi[user_kpi['Month_Val'] == selected_val]
                 
-                selected_data = user_kpi[user_kpi['Month_Val'] == selected_month]
-                display_df = user_kpi.groupby('Month_Val').mean(numeric_only=True).reset_index().rename(columns={'Month_Val':'Date'})
-                report_name = f"{advisor_name}_Monthly_{selected_month.strftime('%b_%Y')}.csv"
-
-            # Download CSV
-            with head_col2:
-                csv = selected_data.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Download CSV", data=csv, file_name=report_name, mime='text/csv')
+                chart_df = user_kpi.groupby('Month_Val').agg(agg_rules).reset_index().rename(columns={'Month_Val':'Date'})
 
             # --- SUMMARY METRICS ---
             st.markdown("---")
-            st.subheader(f"Summary for Selection")
-            m1, m2, m3, m4 = st.columns(4)
-            # Recalculate mean from the selected period
-            avg = selected_data.mean(numeric_only=True)
-            m1.metric("Avg Shift Score", f"{avg.get('Shift_Score', 0):.1f}%")
-            m2.metric("Avg IA Hours", f"{avg.get('IA_Hours', 0):.2f}")
-            m3.metric("Avg Satisfied Survey", f"{avg.get('Satisfied_Survey', 0):.1f}%")
-            m4.metric("Avg Sent Rate", f"{avg.get('Sent_Rate', 0):.1f}%")
-
-            # --- TREND CHARTS ---
-            st.subheader(f"Trends (History)")
+            st.subheader("Performance Summary")
             
-            def make_chart(df, y_col, title):
-                fig = px.line(df, x='Date', y=y_col, markers=True, title=title)
-                # Fixed: Use x0/x1 instead of add_vline to avoid Timestamp errors
-                if freq == "Daily":
-                    fig.add_shape(type="line", x0=selected_date, x1=selected_date, y0=0, y1=1,
-                                 yref="paper", line=dict(color="Red", width=2, dash="dash"))
-                return fig
+            # Row 1: Quality Averages
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Avg Shift Score", f"{filtered_df['Shift_Score'].mean():.1f}%")
+            m2.metric("Avg IA Hours", f"{filtered_df['IA_Hours'].mean():.2f}")
+            m3.metric("Avg Satisfied Survey", f"{filtered_df['Satisfied_Survey'].mean():.1f}%")
+            m4.metric("Avg Sent Rate", f"{filtered_df['Sent_Rate'].mean():.1f}%")
 
-            t1, t2 = st.columns(2)
-            with t1:
-                st.plotly_chart(make_chart(display_df, 'Shift_Score', "Shift Score"), width='stretch')
-                st.plotly_chart(make_chart(display_df, 'Sent_Rate', "Sent Rate %"), width='stretch')
-            with t2:
-                st.plotly_chart(make_chart(display_df, 'Satisfied_Survey', "Satisfied Survey %"), width='stretch')
-                st.plotly_chart(make_chart(display_df, 'IA_Hours', "IA Hours"), width='stretch')
+            # Row 2: Volume Totals
+            v1, v2, v3, v4 = st.columns(4)
+            total_calls = filtered_df['OB_Calls'].sum() + filtered_df['QA_Calls'].sum()
+            v1.metric("Total Calls Handled", int(total_calls))
+            v2.metric("Total OB Calls", int(filtered_df['OB_Calls'].sum()))
+            v3.metric("Total Call Abandons", int(filtered_df['Call_Abandons'].sum()))
+            v4.metric("Total MOB", int(filtered_df['MOB'].sum()))
 
-            # --- CSAT & RAW DATA ---
+            # --- PERFORMANCE TRENDS ---
             st.divider()
-            st.subheader("💬 Recent Feedback")
-            if csat_df is not None:
-                user_csat = csat_df[csat_df['Advisor Name'] == advisor_name].copy()
-                st.dataframe(user_csat.sort_values('Date', ascending=False), 
-                             column_config={"Chat_Link": st.column_config.LinkColumn("Chat Link")},
-                             width='stretch')
+            st.subheader(f"Quality Trends ({freq})")
+            t_col1, t_col2 = st.columns(2)
+            with t_col1:
+                st.plotly_chart(px.line(chart_df, x='Date', y='Shift_Score', markers=True, title="Shift Score (%)"), width='stretch')
+                st.plotly_chart(px.line(chart_df, x='Date', y='Sent_Rate', markers=True, title="Sent Rate (%)"), width='stretch')
+            with t_col2:
+                st.plotly_chart(px.line(chart_df, x='Date', y='Satisfied_Survey', markers=True, title="Satisfied Survey (%)"), width='stretch')
+                st.plotly_chart(px.line(chart_df, x='Date', y='IA_Hours', markers=True, title="IA Hours"), width='stretch')
 
+            st.subheader(f"Volume Trends ({freq} - Total Sum)")
+            v_col1, v_col2 = st.columns(2)
+            with v_col1:
+                st.plotly_chart(px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls'], title="Call Volume (OB vs QA)", barmode='group'), width='stretch')
+            with v_col2:
+                st.plotly_chart(px.bar(chart_df, x='Date', y=['Call_Abandons', 'MOB'], title="Abandons & MOB Volume", barmode='group'), width='stretch')
+
+            # --- RAW DATA (Strictly Filtered) ---
             st.divider()
-            st.subheader("📋 Full History Raw Data")
-            st.dataframe(user_kpi.sort_values('Date', ascending=False), width='stretch')
+            st.subheader(f"📋 Raw Data for this Selection")
+            st.dataframe(filtered_df.sort_values('Date', ascending=False), width='stretch')
 
 else:
-    st.info("👈 Enter your advisor email in the sidebar to begin.")
+    st.info("👈 Enter your email in the sidebar to begin.")
