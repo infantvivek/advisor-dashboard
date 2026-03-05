@@ -13,6 +13,7 @@ import plotly.express as px
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv" 
 
+
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
 # --- 2. BRANDING & LOGO ---
@@ -67,7 +68,6 @@ if user_email:
             st.sidebar.success(f"User: {advisor_name}")
             freq = st.radio("Select View Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            # Helper for metrics
             def format_val(val, suffix="%"):
                 if pd.isna(val) or val == 0: return "-"
                 return f"{val:.1f}{suffix}"
@@ -110,7 +110,6 @@ if user_email:
             st.markdown("---")
             st.subheader("Performance Summary")
             
-            # MATH FOR AVG DSAT
             avg_satisfied = filtered_kpi['Satisfied_Survey'].mean()
             avg_dsat_calc = 100 - avg_satisfied if not pd.isna(avg_satisfied) else None
 
@@ -118,7 +117,7 @@ if user_email:
             m1.metric("Avg Shift Score", format_val(filtered_kpi['Shift_Score'].mean()))
             m2.metric("Avg IA Hours", format_val(filtered_kpi['IA_Hours'].mean(), "h"))
             m3.metric("Avg Satisfied Survey", format_val(avg_satisfied))
-            m4.metric("Avg DSAT %", format_val(avg_dsat_calc)) # New Metric
+            m4.metric("Avg DSAT %", format_val(avg_dsat_calc))
             m5.metric("Avg Sent Rate", format_val(filtered_kpi['Sent_Rate'].mean()))
 
             v1, v2, v3, v4 = st.columns(4)
@@ -129,18 +128,28 @@ if user_email:
 
             # --- TRENDS ---
             st.divider()
-            st.subheader(f"Trends for: {selected_val if freq != 'Daily' else selected_val.strftime('%d %b %Y')}")
+            st.subheader(f"Data Visuals for selection")
             t_col1, t_col2 = st.columns(2)
+            
             with t_col1:
+                title_sat = "Satisfaction Trend (Sent vs Satisfied)"
                 if freq == "Daily":
-                    st.plotly_chart(px.bar(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], barmode='group', title="Quality (Daily)"), width='stretch')
+                    st.plotly_chart(px.bar(chart_df, x='Date', y=['Sent_Rate', 'Satisfied_Survey'], barmode='group', title=title_sat), width='stretch')
                 else:
-                    st.plotly_chart(px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], markers=True, title="Quality Trend"), width='stretch')
+                    st.plotly_chart(px.line(chart_df, x='Date', y=['Sent_Rate', 'Satisfied_Survey'], markers=True, title=title_sat), width='stretch')
+            
             with t_col2:
+                title_adh = "Adherence Trend (IA vs Shift Score)"
                 if freq == "Daily":
-                    st.plotly_chart(px.bar(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], barmode='group', title="Satisfaction & IA (Daily)"), width='stretch')
+                    st.plotly_chart(px.bar(chart_df, x='Date', y=['IA_Hours', 'Shift_Score'], barmode='group', title=title_adh), width='stretch')
                 else:
-                    st.plotly_chart(px.line(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], markers=True, title="Satisfaction & IA Trend"), width='stretch')
+                    st.plotly_chart(px.line(chart_df, x='Date', y=['IA_Hours', 'Shift_Score'], markers=True, title=title_adh), width='stretch')
+
+            v_col1, v_col2 = st.columns(2)
+            with v_col1:
+                st.plotly_chart(px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls'], barmode='group', title="Call Volume Breakdown"), width='stretch')
+            with v_col2:
+                st.plotly_chart(px.bar(chart_df, x='Date', y=['Call_Abandons', 'MOB'], barmode='group', title="Abandons & MOB Breakdown"), width='stretch')
 
             # --- DSAT ANALYSIS SECTION ---
             st.divider()
@@ -161,4 +170,4 @@ if user_email:
             st.dataframe(filtered_kpi.sort_values('Date', ascending=False), width='stretch')
 
 else:
-    st.info("👈 Enter your email in the sidebar to access The Go Getters portal.")
+    st.info("👈 Enter your advisor email in the sidebar to access The Go Getters portal.")
