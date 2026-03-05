@@ -2,98 +2,91 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Your Google Sheet Link
+# 1. Your Google Sheet CSV Link
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv"
 
-st.set_page_config(page_title="Advisor Performance Dashboard", layout="wide")
+st.set_page_config(page_title="KPI Performance Dashboard", layout="wide")
 
-# 2. Data Loading Function
-@st.cache_data(ttl=300) # Refresh every 5 minutes
+@st.cache_data(ttl=60)
 def load_data():
     try:
-        # Load the CSV
         df = pd.read_csv(SHEET_URL)
-        # Clean column names (removes any accidental spaces)
         df.columns = df.columns.str.strip()
-        # Convert Date column to actual dates
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        
+        # --- DATE FORMAT FIX ---
+        # This converts Feb'28'26 into a real date Python can understand
+        df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
+        
+        # Fill empty numbers with 0 to prevent crashes
+        df = df.fillna(0)
         return df
     except Exception as e:
-        st.error(f"Error connecting to Google Sheets: {e}")
+        st.error(f"Could not read data: {e}")
         return None
 
 # --- UI LOGIC ---
-st.title("📊 Subordinate KPI Portal")
+st.title("📈 Advisor Performance Portal")
 
 # Sidebar Login
-st.sidebar.header("Login")
-user_email = st.sidebar.text_input("Enter your Email").strip().lower()
+user_email = st.sidebar.text_input("Login with Email").strip().lower()
 
 if user_email:
-    all_data = load_data()
+    data = load_data()
     
-    if all_data is not None:
-        # Check if Email column exists
-        if 'Email' not in all_data.columns:
-            st.error("Technical Error: The 'Email' column is missing from your Google Sheet.")
+    if data is not None:
+        # Check if Email column exists (Step 1 from above)
+        if 'Email' not in data.columns:
+            st.error("Please add the 'Email' column to your Google Sheet using VLOOKUP.")
         else:
-            # Filter data for the logged-in user
-            user_data = all_data[all_data['Email'].str.lower() == user_email].copy()
+            # Filter for the logged in advisor
+            user_df = data[data['Email'].str.lower() == user_email].copy()
 
-            if user_data.empty:
-                st.warning(f"Access Denied. No records found for: {user_email}")
+            if user_df.empty:
+                st.warning("Email not found. Check if you added the email column to the KPI sheet.")
             else:
-                advisor_name = user_data['Advisor Name'].iloc[0]
-                st.header(f"Welcome, {advisor_name}")
+                advisor_name = user_df['Advisor Name'].iloc[0]
+                st.header(f"Performance for {advisor_name}")
 
-                # --- FILTERS ---
-                view_type = st.radio("Select Performance View", ["Daily", "Weekly", "Monthly"], horizontal=True)
+                # --- TOP STATS ---
+                latest = user_df.sort_values('Date').iloc[-1]
                 
-                # Logic to aggregate data based on view_type
-                plot_df = user_data.sort_values('Date')
-                if view_type == "Weekly":
+                c1, c2, c3, c4 = st.columns(4)
+                # Using your exact header names
+                c1.metric("Shift Score", f"{latest['Shift_Score']}%")
+                c2.metric("IA Hours", f"{latest['IA_Hours']}")
+                c3.metric("OB Calls", int(latest['OB_Calls']))
+                c4.metric("Satisfied Survey", f"{latest['Satisfied_Survey']}%")
+
+                # --- VISUAL TRENDS ---
+                st.subheader("Performance Over Time")
+                
+                # Filter View (Daily/Weekly/Monthly)
+                view = st.segmented_control("View Type", ["Daily", "Weekly", "Monthly"], default="Daily")
+                
+                plot_df = user_df.sort_values('Date')
+                if view == "Weekly":
                     plot_df = plot_df.resample('W', on='Date').mean(numeric_only=True).reset_index()
-                elif view_type == "Monthly":
+                elif view == "Monthly":
                     plot_df = plot_df.resample('M', on='Date').mean(numeric_only=True).reset_index()
 
-                # --- KEY METRICS ROW ---
-                st.markdown("### Most Recent Performance")
-                m1, m2, m3, m4 = st.columns(4)
+                fig = px.line(plot_df, x='Date', y=['Shift_Score', 'Satisfied_Survey'], 
+                              markers=True, title="Quality vs Adherence")
+                st.plotly_chart(fig, use_container_width=True)
+
+                # --- CALL HANDLING SECTION ---
+                st.subheader("Call Handling Stats")
+                col_a, col_b = st.columns(2)
                 
-                # Get the last row of data
-                latest = plot_df.iloc[-1]
-                
-                m1.metric("Shift Score", f"{latest['Shift_Score']}%")
-                m2.metric("IA Hours", f"{latest['IA_Hours']:.2f}")
-                m3.metric("Satisfied Survey", f"{latest['Satisfied_Survey']}%")
-                m4.metric("OB Calls", int(latest['OB_Calls']))
-
-                # --- CHARTS ---
-                col_left, col_right = st.columns(2)
-
-                with col_left:
-                    st.subheader("Adherence & Quality Trends")
-                    fig1 = px.line(plot_df, x='Date', y=['Shift_Score', 'Satisfied_Survey'], 
-                                  markers=True, template="plotly_white")
-                    st.plotly_chart(fig1, use_container_width=True)
-
-                with col_right:
-                    st.subheader("Call Volumes")
-                    fig2 = px.bar(plot_df, x='Date', y=['OB_Calls', 'QA_Calls'], 
-                                 barmode='group', template="plotly_white")
+                with col_a:
+                    fig2 = px.bar(plot_df, x='Date', y=['OB_Calls', 'QA_Calls'], barmode='group')
                     st.plotly_chart(fig2, use_container_width=True)
+                
+                with col_b:
+                    fig3 = px.area(plot_df, x='Date', y=['Avg_OB_Time', 'Avg_QA_Time'])
+                    st.plotly_chart(fig3, use_container_width=True)
 
-                # --- HANDLING TIME INSIGHTS ---
-                st.markdown("---")
-                st.subheader("Call Handling Insights")
-                fig3 = px.area(plot_df, x='Date', y=['Avg_OB_Time', 'Avg_QA_Time'], 
-                              title="Average Handling Time (OB vs QA)", 
-                              line_shape='spline')
-                st.plotly_chart(fig3, use_container_width=True)
-
-                # --- RAW DATA TABLE ---
-                with st.expander("Show Detailed Logs"):
-                    st.write(user_data.sort_values('Date', ascending=False))
-
+                # --- RAW DATA ---
+                with st.expander("View your raw logs"):
+                    st.dataframe(user_df.sort_values('Date', ascending=False))
 else:
-    st.info("👈 Please enter your email address in the sidebar to access your personalized dashboard.")
+    st.info("Enter your work email in the sidebar to view your performance metrics.")
