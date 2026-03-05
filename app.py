@@ -4,6 +4,7 @@ import plotly.express as px
 
 # --- 1. DATA SOURCE LINKS ---
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv"
+CSAT_URL = "PASTE_YOUR_CSAT_SHEET_CSV_LINK_HERE" 
 
 st.set_page_config(page_title="The Go Getters | KPI Portal", layout="wide")
 
@@ -11,7 +12,7 @@ st.set_page_config(page_title="The Go Getters | KPI Portal", layout="wide")
 def add_branding():
     col1, col2 = st.columns([1, 8])
     with col1:
-        # HighLevel Logo from your provided link
+        # HighLevel Logo
         st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
     with col2:
         st.title("The Go Getters")
@@ -24,7 +25,6 @@ def load_kpi_data():
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
         df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
         
-        # Define Columns
         num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 
                     'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
         
@@ -61,7 +61,8 @@ if user_email:
                 selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
                 # Filter strictly for that day
                 filtered_df = user_kpi[user_kpi['Date'] == selected_val]
-                chart_df = filtered_df # Charts only show this day
+                # In Daily view, we show the chart for just that single selection as requested
+                chart_df = filtered_df 
 
             elif freq == "Weekly":
                 user_kpi['W_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
@@ -70,26 +71,19 @@ if user_email:
                 
                 week_options = user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
                 selected_val = st.selectbox("Select Week:", week_options)
-                # Filter strictly for that week
                 filtered_df = user_kpi[user_kpi['Week_Range'] == selected_val]
-                
-                # For Weekly Trend, we show the daily breakdown within that specific week
                 chart_df = filtered_df.sort_values('Date')
 
             else: # Monthly
                 user_kpi['Month_Label'] = user_kpi['Date'].dt.to_period('M').apply(lambda r: r.start_time)
                 month_options = sorted(user_kpi['Month_Label'].unique(), reverse=True)
                 selected_val = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
-                # Filter strictly for that month
                 filtered_df = user_kpi[user_kpi['Month_Label'] == selected_val]
-                
-                # For Monthly Trend, we show the daily breakdown within that specific month
                 chart_df = filtered_df.sort_values('Date')
 
             # --- SUMMARY METRICS ---
             st.markdown("---")
             
-            # Helper function for Nil values
             def format_val(val, suffix="%"):
                 if pd.isna(val) or val == 0:
                     return "-"
@@ -109,19 +103,28 @@ if user_email:
 
             # --- DYNAMIC GRAPHS ---
             st.divider()
-            st.subheader(f"Data Visualization for: {selected_val if freq != 'Daily' else selected_val.strftime('%d %b %Y')}")
+            st.subheader(f"Visual Trends: {selected_val if freq != 'Daily' else selected_val.strftime('%d %b %Y')}")
             
-            # Graph Row 1: Quality
+            # Logic: If Daily is selected, use Bar charts for EVERYTHING.
+            # If Weekly/Monthly, use Line charts for Quality and Bar for Volume.
+            
             t_col1, t_col2 = st.columns(2)
             with t_col1:
-                fig_q1 = px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], markers=True, title="Quality Performance Trend")
+                if freq == "Daily":
+                    fig_q1 = px.bar(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], barmode='group', title="Quality Performance (Daily)")
+                else:
+                    fig_q1 = px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], markers=True, title="Quality Performance Trend")
                 st.plotly_chart(fig_q1, width='stretch')
+
             with t_col2:
-                fig_q2 = px.line(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], markers=True, title="Survey & Adherence Trend")
+                if freq == "Daily":
+                    fig_q2 = px.bar(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], barmode='group', title="Survey & Adherence (Daily)")
+                else:
+                    fig_q2 = px.line(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], markers=True, title="Survey & Adherence Trend")
                 st.plotly_chart(fig_q2, width='stretch')
 
-            # Graph Row 2: Volume
             v_col1, v_col2 = st.columns(2)
+            # Volume graphs are bar charts in all views
             with v_col1:
                 fig_v1 = px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls'], barmode='group', title="Call Volume Breakdown")
                 st.plotly_chart(fig_v1, width='stretch')
@@ -136,3 +139,4 @@ if user_email:
 
 else:
     st.info("👈 Please enter your email in the sidebar to access the dashboard.")
+    
