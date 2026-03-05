@@ -2,6 +2,7 @@
 
 # --- 1. DATA SOURCE LINKS ---
 # Ensure these links point to the specific tabs in your Google Sheet (Published as CSV)
+#TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=0&single=true&output=csv"
 #KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 #DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv" 
 import streamlit as st
@@ -9,174 +10,129 @@ import pandas as pd
 import plotly.express as px
 
 # --- 1. DATA SOURCE LINKS ---
-KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv"
+TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=0&single=true&output=csv"
+KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"  
+
+
 
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
-# --- 2. BRANDING & LOGO ---
-def add_branding():
-    col1, col2 = st.columns([1, 8])
-    with col1:
-        # HighLevel Logo
-        st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
-    with col2:
-        st.title("The Go Getters")
-        st.subheader("Advisor Performance & DSAT Analysis Dashboard")
-
-@st.cache_data(ttl=30)
-def load_kpi_data():
+# --- DATA LOADING WITH ERROR CATCHING ---
+def load_data(url, name):
     try:
-        df = pd.read_csv(KPI_URL)
+        df = pd.read_csv(url)
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
-        # KPI Format: Feb'28'26
-        df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
-        
-        num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 
-                    'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
-        
-        for col in num_cols:
-            if col in df.columns:
-                if df[col].dtype == object:
-                    df[col] = df[col].str.replace('%', '').str.strip()
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        return df.dropna(subset=['Date'])
-    except: return None
+        return df
+    except Exception as e:
+        st.error(f"❌ Failed to load {name}. Check if the link is published as CSV.")
+        st.stop()
 
-@st.cache_data(ttl=30)
-def load_dsat_data():
-    try:
-        df = pd.read_csv(DSAT_URL)
-        df.columns = df.columns.str.strip().str.replace('\ufeff', '')
-        # Updated DSAT Format: 10/02/2026 (Day/Month/Year)
-        df['Date'] = pd.to_datetime(df['Date'], format="%d/%m/%Y", errors='coerce')
-        # Normalize to midnight so it matches KPI dates exactly
-        df['Date'] = df['Date'].dt.normalize()
-        return df.dropna(subset=['Date'])
-    except: return None
+# --- BRANDING ---
+col1, col2 = st.columns([1, 8])
+with col1:
+    st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
+with col2:
+    st.title("The Go Getters")
+    st.subheader("Advisor Performance & DSAT Analysis Dashboard")
 
-# --- UI START ---
-add_branding()
+# --- LOGIN LOGIC ---
+st.sidebar.title("Login")
+user_email_input = st.sidebar.text_input("Enter Email").strip().lower()
 
-user_email = st.sidebar.text_input("Login with Email").strip().lower()
-
-if user_email:
-    kpi_df = load_kpi_data()
-    dsat_df = load_dsat_data()
+if user_email_input:
+    # 1. Load Team DB to verify user
+    team_df = load_data(TEAM_URL, "Team Detail Sheet")
     
-    if kpi_df is not None:
-        user_kpi = kpi_df[kpi_df['Email'].str.lower() == user_email].copy().sort_values('Date')
+    # Check if email exists in Team Detail
+    if user_email_input in team_df['Email'].str.lower().values:
+        advisor_name = team_df[team_df['Email'].str.lower() == user_email_input]['Advisor Name'].iloc[0]
+        st.sidebar.success(f"Welcome, {advisor_name}")
+        
+        # 2. Load KPI and DSAT
+        kpi_df = load_data(KPI_URL, "KPI Data Sheet")
+        dsat_df = load_data(DSAT_URL, "DSAT Data Sheet")
 
-        if user_kpi.empty:
-            st.warning("No KPI data found for this email.")
-        else:
-            advisor_name = user_kpi['Advisor Name'].iloc[0]
-            st.sidebar.success(f"User: {advisor_name}")
-            
-            freq = st.radio("Select View Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
+        # Process KPI Dates (Feb'28'26)
+        kpi_df['Date'] = pd.to_datetime(kpi_df['Date'], format="%b'%d'%y", errors='coerce')
+        
+        # Process DSAT Dates (10/02/2026)
+        dsat_df['Date'] = pd.to_datetime(dsat_df['Date'], format="%d/%m/%Y", errors='coerce')
+        dsat_df['Date'] = dsat_df['Date'].dt.normalize()
 
-            # Helper for metrics
-            def format_val(val, suffix="%"):
-                if pd.isna(val) or val == 0: return "-"
-                return f"{val:.1f}{suffix}"
+        # Clean KPI Numbers
+        num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
+        for col in num_cols:
+            if col in kpi_df.columns:
+                if kpi_df[col].dtype == object:
+                    kpi_df[col] = kpi_df[col].str.replace('%', '').str.strip()
+                kpi_df[col] = pd.to_numeric(kpi_df[col], errors='coerce')
 
-            # --- SELECTION & FILTERING LOGIC ---
-            if freq == "Daily":
-                available_dates = sorted(user_kpi['Date'].unique(), reverse=True)
-                selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
-                filtered_kpi = user_kpi[user_kpi['Date'] == selected_val]
-                chart_df = filtered_kpi
-                
-                if dsat_df is not None:
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Date'] == selected_val)]
-                else: filtered_dsat = pd.DataFrame()
+        # Filter for this specific advisor
+        user_kpi = kpi_df[kpi_df['Email'].str.lower() == user_email_input].copy().sort_values('Date')
+        
+        # --- UI CONTENT ---
+        freq = st.radio("Select Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            elif freq == "Weekly":
-                # Sunday start logic
-                user_kpi['W_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
-                user_kpi['W_End'] = user_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
-                user_kpi['Week_Range'] = (user_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + user_kpi['W_End'].dt.strftime('%d %b %Y'))
-                
-                week_options = user_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
-                selected_val = st.selectbox("Select Week:", week_options)
-                filtered_kpi = user_kpi[user_kpi['Week_Range'] == selected_val]
-                chart_df = filtered_kpi.sort_values('Date')
-                
-                if dsat_df is not None and not dsat_df.empty:
-                    dsat_df['W_Start'] = dsat_df['Date'] - pd.to_timedelta(dsat_df['Date'].dt.dayofweek + 1 % 7, unit='d')
-                    dsat_df['Week_Range'] = (dsat_df['W_Start'].dt.strftime('%d %b %Y') + " - " + (dsat_df['W_Start'] + pd.to_timedelta(6, unit='d')).dt.strftime('%d %b %Y'))
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Week_Range'] == selected_val)]
-                else: filtered_dsat = pd.DataFrame()
+        # Filter Logic
+        if freq == "Daily":
+            dates = sorted(user_kpi['Date'].unique(), reverse=True)
+            sel = st.selectbox("Select Date:", dates, format_func=lambda x: x.strftime('%d %b %Y'))
+            filtered_kpi = user_kpi[user_kpi['Date'] == sel]
+            filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email_input) & (dsat_df['Date'] == sel)]
+            chart_df = filtered_kpi
+        
+        elif freq == "Weekly":
+            user_kpi['Week_Range'] = (user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')).dt.strftime('%d %b %Y')
+            weeks = user_kpi['Week_Range'].unique()
+            sel = st.selectbox("Select Week:", weeks)
+            filtered_kpi = user_kpi[user_kpi['Week_Range'] == sel]
+            chart_df = filtered_kpi.sort_values('Date')
+            # DSAT Weekly Filter
+            dsat_df['Week_Range'] = (dsat_df['Date'] - pd.to_timedelta(dsat_df['Date'].dt.dayofweek + 1 % 7, unit='d')).dt.strftime('%d %b %Y')
+            filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email_input) & (dsat_df['Week_Range'] == sel)]
 
-            else: # Monthly
-                user_kpi['Month_Label'] = user_kpi['Date'].dt.to_period('M').apply(lambda r: r.start_time)
-                month_options = sorted(user_kpi['Month_Label'].unique(), reverse=True)
-                selected_val = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
-                filtered_kpi = user_kpi[user_kpi['Month_Label'] == selected_val]
-                chart_df = filtered_kpi.sort_values('Date')
-                
-                if dsat_df is not None and not dsat_df.empty:
-                    dsat_df['Month_Label'] = dsat_df['Date'].dt.to_period('M').apply(lambda r: r.start_time)
-                    filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email) & (dsat_df['Month_Label'] == selected_val)]
-                else: filtered_dsat = pd.DataFrame()
+        else: # Monthly
+            user_kpi['Month'] = user_kpi['Date'].dt.strftime('%B %Y')
+            months = user_kpi['Month'].unique()
+            sel = st.selectbox("Select Month:", months)
+            filtered_kpi = user_kpi[user_kpi['Month'] == sel]
+            chart_df = filtered_kpi.sort_values('Date')
+            # DSAT Monthly Filter
+            dsat_df['Month'] = dsat_df['Date'].dt.strftime('%B %Y')
+            filtered_dsat = dsat_df[(dsat_df['Email'].str.lower() == user_email_input) & (dsat_df['Month'] == sel)]
 
-            # --- PERFORMANCE SUMMARY ---
-            st.markdown("---")
-            st.subheader("Performance Summary")
-            
-            avg_satisfied = filtered_kpi['Satisfied_Survey'].mean()
-            avg_dsat_calc = 100 - avg_satisfied if not pd.isna(avg_satisfied) else None
+        # --- SUMMARY ---
+        st.markdown("---")
+        avg_sat = filtered_kpi['Satisfied_Survey'].mean()
+        def f_v(v, s="%"): return f"{v:.1f}{s}" if pd.notna(v) and v != 0 else "-"
+        
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Avg Shift Score", f_v(filtered_kpi['Shift_Score'].mean()))
+        m2.metric("Avg IA Hours", f_v(filtered_kpi['IA_Hours'].mean(), "h"))
+        m3.metric("Avg Satisfied Survey", f_v(avg_sat))
+        m4.metric("Avg DSAT %", f_v(100-avg_sat if pd.notna(avg_sat) else None))
+        m5.metric("Avg Sent Rate", f_v(filtered_kpi['Sent_Rate'].mean()))
 
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Avg Shift Score", format_val(filtered_kpi['Shift_Score'].mean()))
-            m2.metric("Avg IA Hours", format_val(filtered_kpi['IA_Hours'].mean(), "h"))
-            m3.metric("Avg Satisfied Survey", format_val(avg_satisfied))
-            m4.metric("Avg DSAT %", format_val(avg_dsat_calc))
-            m5.metric("Avg Sent Rate", format_val(filtered_kpi['Sent_Rate'].mean()))
+        # --- CHARTS ---
+        def make_c(df, y, t, c):
+            if freq == "Daily": return px.bar(df, x='Date', y=y, title=t, color_discrete_sequence=[c])
+            return px.line(df, x='Date', y=y, markers=True, title=t, color_discrete_sequence=[c])
 
-            v1, v2, v3, v4 = st.columns(4)
-            v1.metric("Total OB Calls", int(filtered_kpi['OB_Calls'].sum()))
-            v2.metric("Total QA Calls", int(filtered_kpi['QA_Calls'].sum()))
-            v3.metric("Total Call Abandons", int(filtered_kpi['Call_Abandons'].sum()))
-            v4.metric("Total MOB", int(filtered_kpi['MOB'].sum()))
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(make_c(chart_df, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
+            st.plotly_chart(make_c(chart_df, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
+        with c2:
+            st.plotly_chart(make_c(chart_df, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
+            st.plotly_chart(make_c(chart_df, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
 
-            # --- INDIVIDUAL TREND GRAPHS ---
-            st.divider()
-            st.subheader(f"Trends for Selected Period")
+        # --- DSAT SECTION ---
+        st.divider()
+        st.subheader(f"🚫 DSAT Analysis & Feedback ({len(filtered_dsat)})")
+        st.dataframe(filtered_dsat[['Date', 'Chat_Link', 'Feedback']], column_config={"Chat_Link": st.column_config.LinkColumn("Chat")}, width='stretch', hide_index=True)
 
-            def create_chart(df, y_col, title, color):
-                if freq == "Daily":
-                    return px.bar(df, x='Date', y=y_col, title=title, color_discrete_sequence=[color])
-                return px.line(df, x='Date', y=y_col, markers=True, title=title, color_discrete_sequence=[color])
-
-            c1, c2 = st.columns(2)
-            with c1:
-                st.plotly_chart(create_chart(chart_df, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
-                st.plotly_chart(create_chart(chart_df, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
-            with c2:
-                st.plotly_chart(create_chart(chart_df, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
-                st.plotly_chart(create_chart(chart_df, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
-
-            # --- DSAT ANALYSIS SECTION ---
-            st.divider()
-            dsat_count = len(filtered_dsat)
-            st.subheader(f"🚫 DSAT Analysis & Feedback ({dsat_count})")
-            
-            if not filtered_dsat.empty:
-                st.dataframe(
-                    filtered_dsat[['Date', 'Chat_Link', 'Feedback']].sort_values('Date', ascending=False),
-                    column_config={
-                        "Date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                        "Chat_Link": st.column_config.LinkColumn("View Chat")
-                    },
-                    width='stretch', hide_index=True
-                )
-            else:
-                st.info(f"No DSAT records found for this period.")
-
-            st.divider()
-            st.subheader("📋 Raw Record Details")
-            st.dataframe(filtered_kpi.sort_values('Date', ascending=False), width='stretch')
-
+    else:
+        st.sidebar.error("Email not found in Go Getters database.")
 else:
-    st.info("👈 Please enter your email in the sidebar to access the portal.")
+    st.info("👈 Enter your work email in the sidebar to load the dashboard.")
