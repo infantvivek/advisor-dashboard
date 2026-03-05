@@ -11,12 +11,26 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5
 st.set_page_config(page_title="Advisor Performance Portal", layout="wide")
 
 # --- DATA LOADING ---
-@st.cache_data(ttl=600)  # Refreshes every 10 mins
-def load_data():
-    df = pd.read_csv(SHEET_URL)
-    df['Date'] = pd.to_datetime(df['Date'])
-    return df
 
+@st.cache_data(ttl=60) # Reduced to 1 minute for testing
+def load_data():
+    try:
+        # Clear any hidden spaces in the URL
+        clean_url = SHEET_URL.strip()
+        data = pd.read_csv(clean_url)
+        
+        # This cleans up the column names automatically
+        data.columns = data.columns.str.strip()
+        
+        # Convert Date safely
+        if 'Date' in data.columns:
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        
+        return data
+    except Exception as e:
+        # This will show you the EXACT error on the website
+        st.error(f"Technical Detail: {e}")
+        return None
 try:
     df_kpi = load_data()
 except:
