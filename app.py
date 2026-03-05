@@ -7,14 +7,15 @@ KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo
 
 st.set_page_config(page_title="The Go Getters | KPI Portal", layout="wide")
 
-# --- BRANDING & LOGO ---
-# Displays GoHighLevel logo and Team Name at the top
-col_logo, col_title = st.columns([1, 8])
-with col_logo:
-    st.image("https://images.g2crowd.com/uploads/product/image/social_landscape/social_landscape_47743d99435f375c329437149f6f79d0/gohighlevel.png", width=80)
-with col_title:
-    st.title("The Go Getters Performance Dashboard")
-    st.markdown("### Advisor KPI Statistics")
+# --- 2. BRANDING & LOGO ---
+def add_branding():
+    col1, col2 = st.columns([1, 8])
+    with col1:
+        # HighLevel Logo from your provided link
+        st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
+    with col2:
+        st.title("The Go Getters")
+        st.subheader("Advisor Performance Dashboard")
 
 @st.cache_data(ttl=30)
 def load_kpi_data():
@@ -23,7 +24,7 @@ def load_kpi_data():
         df.columns = df.columns.str.strip().str.replace('\ufeff', '')
         df['Date'] = pd.to_datetime(df['Date'], format="%b'%d'%y", errors='coerce')
         
-        # Define columns for Average vs Sum
+        # Define Columns
         num_cols = ['IA_Hours', 'Shift_Score', 'Sent_Rate', 'Satisfied_Survey', 
                     'OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB']
         
@@ -35,7 +36,9 @@ def load_kpi_data():
         return df.dropna(subset=['Date'])
     except: return None
 
-# --- UI LOGIC ---
+# --- UI START ---
+add_branding()
+
 user_email = st.sidebar.text_input("Login with Email").strip().lower()
 
 if user_email:
@@ -48,17 +51,17 @@ if user_email:
             st.warning("No KPI data found for this email.")
         else:
             advisor_name = user_kpi['Advisor Name'].iloc[0]
-            st.sidebar.success(f"Advisor: {advisor_name}")
+            st.sidebar.success(f"User: {advisor_name}")
             
-            freq = st.radio("Frequency View:", ["Daily", "Weekly", "Monthly"], horizontal=True)
+            freq = st.radio("Select View Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-            # --- STRICT FILTERING LOGIC ---
+            # --- FILTERING LOGIC ---
             if freq == "Daily":
                 available_dates = sorted(user_kpi['Date'].unique(), reverse=True)
                 selected_val = st.selectbox("Select Date:", available_dates, format_func=lambda x: x.strftime('%d %b %Y'))
-                # Filter strictly for one day
+                # Filter strictly for that day
                 filtered_df = user_kpi[user_kpi['Date'] == selected_val]
-                chart_df = filtered_df 
+                chart_df = filtered_df # Charts only show this day
 
             elif freq == "Weekly":
                 user_kpi['W_Start'] = user_kpi['Date'] - pd.to_timedelta(user_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
@@ -69,6 +72,8 @@ if user_email:
                 selected_val = st.selectbox("Select Week:", week_options)
                 # Filter strictly for that week
                 filtered_df = user_kpi[user_kpi['Week_Range'] == selected_val]
+                
+                # For Weekly Trend, we show the daily breakdown within that specific week
                 chart_df = filtered_df.sort_values('Date')
 
             else: # Monthly
@@ -77,6 +82,8 @@ if user_email:
                 selected_val = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
                 # Filter strictly for that month
                 filtered_df = user_kpi[user_kpi['Month_Label'] == selected_val]
+                
+                # For Monthly Trend, we show the daily breakdown within that specific month
                 chart_df = filtered_df.sort_values('Date')
 
             # --- SUMMARY METRICS ---
@@ -100,27 +107,32 @@ if user_email:
             v3.metric("Total Call Abandons", int(filtered_df['Call_Abandons'].sum()))
             v4.metric("Total MOB", int(filtered_df['MOB'].sum()))
 
-            # --- FILTERED GRAPHS ---
+            # --- DYNAMIC GRAPHS ---
             st.divider()
-            st.subheader(f"Data Visuals for selected {freq} range")
+            st.subheader(f"Data Visualization for: {selected_val if freq != 'Daily' else selected_val.strftime('%d %b %Y')}")
             
-            g_col1, g_col2 = st.columns(2)
-            with g_col1:
-                # Quality Trends (Filtered)
-                fig_q = px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate', 'Satisfied_Survey'], 
-                                markers=True, title="Quality Metrics (%)")
-                st.plotly_chart(fig_q, width='stretch')
-                
-            with g_col2:
-                # Volume Trends (Filtered)
-                fig_v = px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls', 'Call_Abandons', 'MOB'], 
-                               barmode='group', title="Volume Metrics (Count)")
-                st.plotly_chart(fig_v, width='stretch')
+            # Graph Row 1: Quality
+            t_col1, t_col2 = st.columns(2)
+            with t_col1:
+                fig_q1 = px.line(chart_df, x='Date', y=['Shift_Score', 'Sent_Rate'], markers=True, title="Quality Performance Trend")
+                st.plotly_chart(fig_q1, width='stretch')
+            with t_col2:
+                fig_q2 = px.line(chart_df, x='Date', y=['Satisfied_Survey', 'IA_Hours'], markers=True, title="Survey & Adherence Trend")
+                st.plotly_chart(fig_q2, width='stretch')
 
-            # --- FILTERED RAW DATA ---
+            # Graph Row 2: Volume
+            v_col1, v_col2 = st.columns(2)
+            with v_col1:
+                fig_v1 = px.bar(chart_df, x='Date', y=['OB_Calls', 'QA_Calls'], barmode='group', title="Call Volume Breakdown")
+                st.plotly_chart(fig_v1, width='stretch')
+            with v_col2:
+                fig_v2 = px.bar(chart_df, x='Date', y=['Call_Abandons', 'MOB'], barmode='group', title="Abandons & MOB Breakdown")
+                st.plotly_chart(fig_v2, width='stretch')
+
+            # --- RAW DATA ---
             st.divider()
-            st.subheader("📋 Selected Raw Data")
+            st.subheader("📋 Detailed Records (Filtered)")
             st.dataframe(filtered_df.sort_values('Date', ascending=False), width='stretch')
 
 else:
-    st.info("Please enter your email in the sidebar to view 'The Go Getters' dashboard.")
+    st.info("👈 Please enter your email in the sidebar to access the dashboard.")
