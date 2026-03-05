@@ -11,7 +11,7 @@ st.set_page_config(page_title="Advisor Performance Portal", layout="wide")
 # --- DATA LOADING ---
 @st.cache_data(ttl=600)  # Refreshes every 10 mins
 def load_data():
-    df = pd.read_csv(https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv)
+    df = pd.read_csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?output=csv")
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
