@@ -14,7 +14,7 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
-# UPDATED MANAGER EMAIL
+# MANAGER EMAIL
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
 
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
@@ -60,12 +60,14 @@ is_manager = st.session_state['user_email'] == MANAGER_EMAIL
 kpi_df = load_data(KPI_URL, is_kpi=True)
 dsat_df = load_data(DSAT_URL)
 
-# Branding
-c1, c2 = st.columns([1, 8])
-with c1: st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width=100)
+# Branding - Adjusted Logo Size
+c1, c2 = st.columns([2, 8]) # Increased column ratio for logo
+with c1: 
+    # Enlarged Logo
+    st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", use_container_width=True)
 with c2: 
     st.title("The Go Getters")
-    st.subheader(f"Welcome {st.session_state['user_name']}!!") # Greet logged in user
+    st.subheader(f"Welcome {st.session_state['user_name']}!!") # Greeting
 
 if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
@@ -116,7 +118,7 @@ if is_manager:
     # Manager Summary (5-6 lines)
     avg_team_sat = f_kpi['Satisfied_Survey'].mean()
     avg_team_sent = f_kpi['Sent_Rate'].mean()
-    shout_out = f_kpi[(f_kpi['Sent_Rate'] > 80) & (f_kpi['Satisfied_Survey'] > 95)]['Advisor Name'].unique()
+    shout_out = f_kpi[(f_kpi['Sent_Rate'] >= 80) & (f_kpi['Satisfied_Survey'] > 95)]['Advisor Name'].unique()
     attention = f_kpi[(f_kpi['Sent_Rate'] < 60) | (f_kpi['Satisfied_Survey'] < 80)]['Advisor Name'].unique()
     dsat_total = len(f_dsat)
 
@@ -162,10 +164,18 @@ if is_manager:
     
     lc1, lc2, lc3 = st.columns(3)
     with lc1:
-        # Eligibility criteria: Sent rate >= 80%
-        st.subheader("Eligible Top Satisfaction")
+        # Renamed Leaderboard: Success Champions
+        st.subheader("🏆 Success Champions")
+        # Eligibility criteria: Sent rate >= 80%, Sorted by Satisfied Survey DESC
         eligible_df = l_df[l_df['Sent_Rate'] >= 80]
-        st.dataframe(eligible_df.sort_values('Satisfied_Survey', ascending=False)[['Advisor Name','Satisfied_Survey']], hide_index=True)
+        st.dataframe(
+            eligible_df.sort_values('Satisfied_Survey', ascending=False)[['Advisor Name', 'Sent_Rate', 'Satisfied_Survey']], 
+            hide_index=True,
+            column_config={
+                "Sent_Rate": st.column_config.NumberColumn("Sent Rate %", format="%.1f"),
+                "Satisfied_Survey": st.column_config.NumberColumn("Satisfied Survey %", format="%.1f")
+            }
+        )
     with lc2:
         st.subheader("Top Sent Rate")
         st.dataframe(l_df.sort_values('Sent_Rate', ascending=False)[['Advisor Name','Sent_Rate']], hide_index=True)
@@ -182,11 +192,11 @@ def make_c(df, y, t, c):
 
 t_col1, t_col2 = st.columns(2)
 with t_col1:
-    st.plotly_chart(make_c(f_kpi if is_manager else f_kpi, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
-    st.plotly_chart(make_c(f_kpi if is_manager else f_kpi, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
+    st.plotly_chart(make_c(f_kpi, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
+    st.plotly_chart(make_c(f_kpi, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
 with t_col2:
-    st.plotly_chart(make_c(f_kpi if is_manager else f_kpi, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
-    st.plotly_chart(make_c(f_kpi if is_manager else f_kpi, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
+    st.plotly_chart(make_c(f_kpi, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
+    st.plotly_chart(make_c(f_kpi, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
 
 # DSAT SECTION
 st.divider()
