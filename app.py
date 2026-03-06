@@ -14,11 +14,12 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
+# UPDATED MANAGER EMAIL
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
 
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
-# --- 2. DATA LOADING ---
+# --- 2. DATA LOADING & CLEANING ---
 @st.cache_data(ttl=30)
 def load_data(url, is_kpi=False):
     try:
@@ -54,12 +55,11 @@ if not st.session_state['authenticated']:
             st.error("Invalid credentials.")
     st.stop()
 
-# --- 4. DATA PROCESSING ---
+# --- 4. BRANDING & DATA PREP ---
 is_manager = st.session_state['user_email'] == MANAGER_EMAIL
 kpi_df = load_data(KPI_URL, is_kpi=True)
 dsat_df = load_data(DSAT_URL)
 
-# Branding - HighLevel Logo Adjusted
 c1, c2 = st.columns([2, 8])
 with c1: 
     st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", use_container_width=True)
@@ -71,7 +71,7 @@ if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
     st.rerun()
 
-# Filter context
+# Filter context based on user role
 if not is_manager:
     full_kpi = kpi_df[kpi_df['Email'] == st.session_state['user_email']].copy()
     full_dsat = dsat_df[dsat_df['Email'] == st.session_state['user_email']].copy() if dsat_df is not None else pd.DataFrame()
@@ -81,51 +81,45 @@ else:
 
 full_kpi['Date'] = pd.to_datetime(full_kpi['Date'], format="%b'%d'%y", errors='coerce')
 full_kpi = full_kpi.dropna(subset=['Date']).sort_values('Date')
+
 if not full_dsat.empty:
     full_dsat['Date'] = pd.to_datetime(full_dsat['Date'], format="%d/%m/%Y", errors='coerce')
     full_dsat = full_dsat.dropna(subset=['Date'])
 
+# --- 5. FREQUENCY FILTERS ---
 freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-# Selection Filters with Updated Weekly Range and Descending Sort
 if freq == "Daily":
     sel = st.selectbox("Select Date:", sorted(full_kpi['Date'].unique(), reverse=True), format_func=lambda x: x.strftime('%d %b %Y'))
     f_kpi = full_kpi[full_kpi['Date'] == sel]
     f_dsat = full_dsat[full_dsat['Date'].dt.normalize() == sel] if not full_dsat.empty else pd.DataFrame()
 
 elif freq == "Weekly":
-    # Logic for Start and End of Week (Sunday Start)
-    full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta(full_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')
+    full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta(full_kpi['Date'].dt.dayfirst + 1 % 7, unit='d')
     full_kpi['W_End'] = full_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
     full_kpi['Week_Range'] = full_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + full_kpi['W_End'].dt.strftime('%d %b %Y')
-    
-    # Sort weeks descending by start date
     week_options = full_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
     sel = st.selectbox("Select Week:", week_options)
-    
     f_kpi = full_kpi[full_kpi['Week_Range'] == sel]
     if not full_dsat.empty:
-        full_dsat['W_Start'] = full_dsat['Date'] - pd.to_timedelta(full_dsat['Date'].dt.dayofweek + 1 % 7, unit='d')
+        full_dsat['W_Start'] = full_dsat['Date'] - pd.to_timedelta(full_dsat['Date'].dt.dayfirst + 1 % 7, unit='d')
         full_dsat['W_End'] = full_dsat['W_Start'] + pd.to_timedelta(6, unit='d')
         full_dsat['Week_Range'] = full_dsat['W_Start'].dt.strftime('%d %b %Y') + " - " + full_dsat['W_End'].dt.strftime('%d %b %Y')
         f_dsat = full_dsat[full_dsat['Week_Range'] == sel]
     else: f_dsat = pd.DataFrame()
 
 else: # Monthly
-    # Sort monthly descending
     full_kpi['Month_Sort'] = full_kpi['Date'].dt.to_period('M')
     full_kpi['Month_Label'] = full_kpi['Date'].dt.strftime('%B %Y')
-    
     month_options = full_kpi.sort_values('Month_Sort', ascending=False)['Month_Label'].unique()
     sel = st.selectbox("Select Month:", month_options)
-    
     f_kpi = full_kpi[full_kpi['Month_Label'] == sel]
     if not full_dsat.empty:
         full_dsat['Month_Label'] = full_dsat['Date'].dt.strftime('%B %Y')
         f_dsat = full_dsat[full_dsat['Month_Label'] == sel]
     else: f_dsat = pd.DataFrame()
 
-# --- 5. NARRATIVE SUMMARY ---
+# --- 6. NARRATIVE SUMMARY ---
 st.divider()
 st.subheader("Performance Narrative")
 if is_manager:
@@ -137,14 +131,14 @@ if is_manager:
     summary_text = f"For {sel}, the team achieved an average satisfaction of {avg_team_sat:.1f}% with a {avg_team_sent:.1f}% survey sent rate. "
     summary_text += f"Total DSATs for this period: {len(f_dsat)}. "
     summary_text += f"Great job {', '.join(shout_out) if len(shout_out)>0 else 'none'} on hitting targets! "
-    summary_text += f"{', '.join(attention) if len(attention)>0 else 'No one'} currently requires immediate coaching attention. "
+    summary_text += f"{', '.join(attention) if len(attention)>0 else 'No one'} currently requires immediate coaching attention."
     st.info(summary_text)
 else:
     p_sat = f_kpi['Satisfied_Survey'].mean()
     p_sent = f_kpi['Sent_Rate'].mean()
-    st.info(f"For {sel}, your satisfaction rate is {p_sat:.1f}% with a {p_sent:.1f}% survey sent rate. Keep up the good work!")
+    st.info(f"For {sel}, your satisfaction rate is {p_sat:.1f}% with a {p_sent:.1f}% survey sent rate. Keep focusing on excellence!")
 
-# --- 6. PERFORMANCE SUMMARY (METRICS) ---
+# --- 7. PERFORMANCE SUMMARY METRICS ---
 st.header("Performance summary")
 avg_sat_metric = f_kpi['Satisfied_Survey'].mean()
 def f_v(v, s="%"): return f"{v:.1f}{s}" if pd.notna(v) and v != 0 else "-"
@@ -162,7 +156,7 @@ v[1].metric("Total QA Calls", int(f_kpi['QA_Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call_Abandons'].sum()))
 
-# --- 7. MANAGER LEADERBOARDS ---
+# --- 8. MANAGER LEADERBOARDS ---
 if is_manager:
     st.divider()
     st.header("🏆 Team Leaderboards")
@@ -182,20 +176,29 @@ if is_manager:
         st.subheader("Total DSAT Received")
         st.dataframe(l_df.sort_values('Total DSAT', ascending=False)[['Advisor Name','Total DSAT']], hide_index=True)
 
-# --- 8. PERFORMANCE TRENDS ---
+# --- 9. PERFORMANCE TRENDS (DAILY AVERAGING FOR MANAGER) ---
 st.divider()
 st.header("Performance Trends")
+
+# CHART DATA PREP
+if is_manager:
+    # AGGREGATE TO DAILY AVERAGES FOR TEAM VIEW
+    chart_df = f_kpi.groupby('Date').mean(numeric_only=True).reset_index()
+else:
+    chart_df = f_kpi.sort_values('Date')
+
 def make_c(df, y, t, c):
-    if freq == "Daily" and not is_manager: return px.bar(df, x='Date', y=y, title=t, color_discrete_sequence=[c])
+    if freq == "Daily" and not is_manager: 
+        return px.bar(df, x='Date', y=y, title=t, color_discrete_sequence=[c])
     return px.line(df, x='Date', y=y, markers=True, title=t, color_discrete_sequence=[c])
 
 t_col1, t_col2 = st.columns(2)
 with t_col1:
-    st.plotly_chart(make_c(f_kpi, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
-    st.plotly_chart(make_c(f_kpi, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
+    st.plotly_chart(make_c(chart_df, 'Shift_Score', "Shift Score", "#3498db"), width='stretch')
+    st.plotly_chart(make_c(chart_df, 'Satisfied_Survey', "Satisfied Survey (%)", "#2ecc71"), width='stretch')
 with t_col2:
-    st.plotly_chart(make_c(f_kpi, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
-    st.plotly_chart(make_c(f_kpi, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
+    st.plotly_chart(make_c(chart_df, 'IA_Hours', "IA Hours", "#e67e22"), width='stretch')
+    st.plotly_chart(make_c(chart_df, 'Sent_Rate', "Survey Sent (%)", "#9b59b6"), width='stretch')
 
 # DSAT & DETAILED REPORT
 st.divider()
