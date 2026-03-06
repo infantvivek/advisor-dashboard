@@ -60,14 +60,13 @@ is_manager = st.session_state['user_email'] == MANAGER_EMAIL
 kpi_df = load_data(KPI_URL, is_kpi=True)
 dsat_df = load_data(DSAT_URL)
 
-# Branding - Adjusted Logo Size
-c1, c2 = st.columns([2, 8]) # Increased column ratio for logo
-with c1: 
-    # Enlarged Logo
+# Branding - Enlarged Logo for Header
+header_col1, header_col2 = st.columns([3, 7]) 
+with header_col1:
     st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", use_container_width=True)
-with c2: 
+with header_col2:
     st.title("The Go Getters")
-    st.subheader(f"Welcome {st.session_state['user_name']}!!") # Greeting
+    st.subheader(f"Welcome {st.session_state['user_name']}!!")
 
 if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
@@ -83,6 +82,7 @@ else:
 
 full_kpi['Date'] = pd.to_datetime(full_kpi['Date'], format="%b'%d'%y", errors='coerce')
 full_kpi = full_kpi.dropna(subset=['Date']).sort_values('Date')
+
 if not full_dsat.empty:
     full_dsat['Date'] = pd.to_datetime(full_dsat['Date'], format="%d/%m/%Y", errors='coerce')
     full_dsat = full_dsat.dropna(subset=['Date'])
@@ -91,31 +91,38 @@ freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
 # Selection Filters
 if freq == "Daily":
-    sel = st.selectbox("Select Date:", sorted(full_kpi['Date'].unique(), reverse=True), format_func=lambda x: x.strftime('%d %b %Y'))
+    sel_options = sorted(full_kpi['Date'].unique(), reverse=True)
+    sel = st.selectbox("Select Date:", sel_options, format_func=lambda x: x.strftime('%d %b %Y'))
     f_kpi = full_kpi[full_kpi['Date'] == sel]
     f_dsat = full_dsat[full_dsat['Date'].dt.normalize() == sel] if not full_dsat.empty else pd.DataFrame()
 elif freq == "Weekly":
-    full_kpi['Week'] = (full_kpi['Date'] - pd.to_timedelta(full_kpi['Date'].dt.dayofweek + 1 % 7, unit='d')).dt.strftime('%d %b %Y')
-    sel = st.selectbox("Select Week:", sorted(full_kpi['Week'].unique(), reverse=True))
-    f_kpi = full_kpi[full_kpi['Week'] == sel]
+    # Logic to show Start and End dates in dropdown
+    full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta(full_kpi['Date'].dt.dayofweek, unit='d')
+    full_kpi['W_End'] = full_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
+    full_kpi['Week_Range'] = full_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + full_kpi['W_End'].dt.strftime('%d %b %Y')
+    
+    week_options = sorted(full_kpi['Week_Range'].unique(), reverse=True)
+    sel = st.selectbox("Select Week:", week_options)
+    f_kpi = full_kpi[full_kpi['Week_Range'] == sel]
+    
     if not full_dsat.empty:
-        full_dsat['Week'] = (full_dsat['Date'] - pd.to_timedelta(full_dsat['Date'].dt.dayofweek + 1 % 7, unit='d')).dt.strftime('%d %b %Y')
-        f_dsat = full_dsat[full_dsat['Week'] == sel]
+        full_dsat['W_Start'] = full_dsat['Date'] - pd.to_timedelta(full_dsat['Date'].dt.dayofweek, unit='d')
+        full_dsat['Week_Range'] = full_dsat['W_Start'].dt.strftime('%d %b %Y') + " - " + (full_dsat['W_Start'] + pd.to_timedelta(6, unit='d')).dt.strftime('%d %b %Y')
+        f_dsat = full_dsat[full_dsat['Week_Range'] == sel]
     else: f_dsat = pd.DataFrame()
 else:
-    full_kpi['Month'] = full_kpi['Date'].dt.strftime('%B %Y')
-    sel = st.selectbox("Select Month:", sorted(full_kpi['Month'].unique(), reverse=True))
-    f_kpi = full_kpi[full_kpi['Month'] == sel]
+    full_kpi['Month_Label'] = full_kpi['Date'].dt.strftime('%B %Y')
+    sel = st.selectbox("Select Month:", sorted(full_kpi['Month_Label'].unique(), reverse=True))
+    f_kpi = full_kpi[full_kpi['Month_Label'] == sel]
     if not full_dsat.empty:
-        full_dsat['Month'] = full_dsat['Date'].dt.strftime('%B %Y')
-        f_dsat = full_dsat[full_dsat['Month'] == sel]
+        full_dsat['Month_Label'] = full_dsat['Date'].dt.strftime('%B %Y')
+        f_dsat = full_dsat[full_dsat['Month_Label'] == sel]
     else: f_dsat = pd.DataFrame()
 
 # --- 5. NARRATIVE SUMMARY SECTIONS ---
 st.divider()
 st.subheader("Performance Narrative")
 if is_manager:
-    # Manager Summary (5-6 lines)
     avg_team_sat = f_kpi['Satisfied_Survey'].mean()
     avg_team_sent = f_kpi['Sent_Rate'].mean()
     shout_out = f_kpi[(f_kpi['Sent_Rate'] >= 80) & (f_kpi['Satisfied_Survey'] > 95)]['Advisor Name'].unique()
@@ -129,7 +136,6 @@ if is_manager:
     summary_text += "Focus on maintaining high survey sent rates to ensure data validity across the team."
     st.info(summary_text)
 else:
-    # Advisor Summary (2-3 lines)
     personal_sat = f_kpi['Satisfied_Survey'].mean()
     personal_sent = f_kpi['Sent_Rate'].mean()
     summary_text = f"Your performance for {sel} shows a satisfaction rate of {personal_sat:.1f}% and a survey sent rate of {personal_sent:.1f}%. "
@@ -164,9 +170,7 @@ if is_manager:
     
     lc1, lc2, lc3 = st.columns(3)
     with lc1:
-        # Renamed Leaderboard: Success Champions
         st.subheader("🏆 Success Champions")
-        # Eligibility criteria: Sent rate >= 80%, Sorted by Satisfied Survey DESC
         eligible_df = l_df[l_df['Sent_Rate'] >= 80]
         st.dataframe(
             eligible_df.sort_values('Satisfied_Survey', ascending=False)[['Advisor Name', 'Sent_Rate', 'Satisfied_Survey']], 
