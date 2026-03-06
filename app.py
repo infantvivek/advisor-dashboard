@@ -14,7 +14,6 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
-# UPDATED MANAGER EMAIL
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
 
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
@@ -62,7 +61,7 @@ dsat_df = load_data(DSAT_URL)
 
 c1, c2 = st.columns([2, 8])
 with c1: 
-    st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", use_container_width=True)
+    st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width='stretch')
 with c2: 
     st.title("The Go Getters")
     st.subheader(f"Welcome {st.session_state['user_name']}!!")
@@ -95,14 +94,15 @@ if freq == "Daily":
     f_dsat = full_dsat[full_dsat['Date'].dt.normalize() == sel] if not full_dsat.empty else pd.DataFrame()
 
 elif freq == "Weekly":
-    full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta(full_kpi['Date'].dt.dayfirst + 1 % 7, unit='d')
+    # Corrected logic: Use dt.dayofweek to calculate start of week (Sunday)
+    full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta((full_kpi['Date'].dt.dayofweek + 1) % 7, unit='d')
     full_kpi['W_End'] = full_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
     full_kpi['Week_Range'] = full_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + full_kpi['W_End'].dt.strftime('%d %b %Y')
     week_options = full_kpi.sort_values('W_Start', ascending=False)['Week_Range'].unique()
     sel = st.selectbox("Select Week:", week_options)
     f_kpi = full_kpi[full_kpi['Week_Range'] == sel]
     if not full_dsat.empty:
-        full_dsat['W_Start'] = full_dsat['Date'] - pd.to_timedelta(full_dsat['Date'].dt.dayfirst + 1 % 7, unit='d')
+        full_dsat['W_Start'] = full_dsat['Date'] - pd.to_timedelta((full_dsat['Date'].dt.dayofweek + 1) % 7, unit='d')
         full_dsat['W_End'] = full_dsat['W_Start'] + pd.to_timedelta(6, unit='d')
         full_dsat['Week_Range'] = full_dsat['W_Start'].dt.strftime('%d %b %Y') + " - " + full_dsat['W_End'].dt.strftime('%d %b %Y')
         f_dsat = full_dsat[full_dsat['Week_Range'] == sel]
@@ -176,13 +176,11 @@ if is_manager:
         st.subheader("Total DSAT Received")
         st.dataframe(l_df.sort_values('Total DSAT', ascending=False)[['Advisor Name','Total DSAT']], hide_index=True)
 
-# --- 9. PERFORMANCE TRENDS (DAILY AVERAGING FOR MANAGER) ---
+# --- 9. PERFORMANCE TRENDS ---
 st.divider()
 st.header("Performance Trends")
 
-# CHART DATA PREP
 if is_manager:
-    # AGGREGATE TO DAILY AVERAGES FOR TEAM VIEW
     chart_df = f_kpi.groupby('Date').mean(numeric_only=True).reset_index()
 else:
     chart_df = f_kpi.sort_values('Date')
