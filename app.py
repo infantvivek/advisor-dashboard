@@ -14,7 +14,9 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
+# PRIVILEGED EMAILS
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
+TEAM_LEAD_EMAIL = "ayush.bhadauria@gohighlevel.com"
 
 st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
@@ -55,7 +57,9 @@ if not st.session_state['authenticated']:
     st.stop()
 
 # --- 4. BRANDING & DATA PREP ---
-is_manager = st.session_state['user_email'] == MANAGER_EMAIL
+# Check if the user is Manager or Team Lead
+is_privileged = st.session_state['user_email'] in [MANAGER_EMAIL, TEAM_LEAD_EMAIL]
+
 kpi_df = load_data(KPI_URL, is_kpi=True)
 dsat_df = load_data(DSAT_URL)
 
@@ -71,7 +75,7 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # Filter context based on user role
-if not is_manager:
+if not is_privileged:
     full_kpi = kpi_df[kpi_df['Email'] == st.session_state['user_email']].copy()
     full_dsat = dsat_df[dsat_df['Email'] == st.session_state['user_email']].copy() if dsat_df is not None else pd.DataFrame()
 else:
@@ -94,7 +98,6 @@ if freq == "Daily":
     f_dsat = full_dsat[full_dsat['Date'].dt.normalize() == sel] if not full_dsat.empty else pd.DataFrame()
 
 elif freq == "Weekly":
-    # Corrected logic: Use dt.dayofweek to calculate start of week (Sunday)
     full_kpi['W_Start'] = full_kpi['Date'] - pd.to_timedelta((full_kpi['Date'].dt.dayofweek + 1) % 7, unit='d')
     full_kpi['W_End'] = full_kpi['W_Start'] + pd.to_timedelta(6, unit='d')
     full_kpi['Week_Range'] = full_kpi['W_Start'].dt.strftime('%d %b %Y') + " - " + full_kpi['W_End'].dt.strftime('%d %b %Y')
@@ -122,7 +125,7 @@ else: # Monthly
 # --- 6. NARRATIVE SUMMARY ---
 st.divider()
 st.subheader("Performance Narrative")
-if is_manager:
+if is_privileged:
     avg_team_sat = f_kpi['Satisfied_Survey'].mean()
     avg_team_sent = f_kpi['Sent_Rate'].mean()
     shout_out = f_kpi[(f_kpi['Sent_Rate'] >= 80) & (f_kpi['Satisfied_Survey'] > 95)]['Advisor Name'].unique()
@@ -131,7 +134,7 @@ if is_manager:
     summary_text = f"For {sel}, the team achieved an average satisfaction of {avg_team_sat:.1f}% with a {avg_team_sent:.1f}% survey sent rate. "
     summary_text += f"Total DSATs for this period: {len(f_dsat)}. "
     summary_text += f"Great job {', '.join(shout_out) if len(shout_out)>0 else 'none'} on hitting targets! "
-    summary_text += f"{', '.join(attention) if len(attention)>0 else 'No one'} currently requires immediate coaching attention."
+    summary_text += f"{', '.join(attention) if len(attention)>0 else 'No one'} currently requires coaching attention."
     st.info(summary_text)
 else:
     p_sat = f_kpi['Satisfied_Survey'].mean()
@@ -156,8 +159,8 @@ v[1].metric("Total QA Calls", int(f_kpi['QA_Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call_Abandons'].sum()))
 
-# --- 8. MANAGER LEADERBOARDS ---
-if is_manager:
+# --- 8. PRIVILEGED LEADERBOARDS ---
+if is_privileged:
     st.divider()
     st.header("🏆 Team Leaderboards")
     l_df = f_kpi.groupby('Advisor Name').agg({'Sent_Rate':'mean','Satisfied_Survey':'mean','Email':'first'}).reset_index()
@@ -180,13 +183,13 @@ if is_manager:
 st.divider()
 st.header("Performance Trends")
 
-if is_manager:
+if is_privileged:
     chart_df = f_kpi.groupby('Date').mean(numeric_only=True).reset_index()
 else:
     chart_df = f_kpi.sort_values('Date')
 
 def make_c(df, y, t, c):
-    if freq == "Daily" and not is_manager: 
+    if freq == "Daily" and not is_privileged: 
         return px.bar(df, x='Date', y=y, title=t, color_discrete_sequence=[c])
     return px.line(df, x='Date', y=y, markers=True, title=t, color_discrete_sequence=[c])
 
