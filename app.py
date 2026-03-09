@@ -88,6 +88,7 @@ if not full_dsat.empty:
 
 freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
+# Selection Filters
 if freq == "Daily":
     sel = st.selectbox("Select Date:", sorted(full_kpi['Date'].unique(), reverse=True), format_func=lambda x: x.strftime('%d %b %Y'))
     f_kpi = full_kpi[full_kpi['Date'] == sel]
@@ -143,12 +144,11 @@ v[1].metric("Total Q/A Calls", int(f_kpi['Q/A Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call Abandons'].sum()))
 
-# --- 8. PRIVILEGED LEADERBOARDS (FIXED ERROR) ---
+# --- 8. PRIVILEGED LEADERBOARDS ---
 if is_privileged:
     st.divider(); st.header("🏆 Leaderboards")
     ldb = f_kpi.groupby('Advisor Name').agg({'Sent Rate %':'mean','Satisfied Survey %':'mean','Q/A Calls':'sum','OB Calls':'sum','Email':'first'}).reset_index()
     
-    # SAFE MERGE FOR DSAT: Ensure 'Total DSAT' exists even if no data is found
     if not f_dsat.empty:
         dsat_counts = f_dsat.groupby('Email').size().reset_index(name='Total DSAT')
         ldb = ldb.merge(dsat_counts, on='Email', how='left').fillna(0)
@@ -156,19 +156,29 @@ if is_privileged:
     if 'Total DSAT' not in ldb.columns:
         ldb['Total DSAT'] = 0
     
-    col_l1, col_l2 = st.columns(2)
+    col_l1, col_l2, col_l3 = st.columns(3) # Use 3 columns for balanced layout
     with col_l1:
-        st.subheader("Success Champions (Sent >=80%, Sat >95%)")
+        st.subheader("🏆 Success Champions")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
+        
         st.subheader("Avg Satisfied Survey")
         st.dataframe(ldb.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Satisfied Survey %']].round(2), hide_index=True)
+    
     with col_l2:
         st.subheader("Total DSAT Received")
-        # Safe to sort now that column existence is guaranteed
         st.dataframe(ldb.sort_values('Total DSAT', ascending=False)[['Advisor Name', 'Total DSAT']], hide_index=True)
+        
         st.subheader("Total QA Calls")
         st.dataframe(ldb.sort_values('Q/A Calls', ascending=False)[['Advisor Name', 'Q/A Calls']], hide_index=True)
+        
+    with col_l3:
+        # NEW LEADERBOARD: Survey Sent %
+        st.subheader("Avg Survey Sent %")
+        st.dataframe(ldb.sort_values('Sent Rate %', ascending=False)[['Advisor Name', 'Sent Rate %']].round(2), hide_index=True)
+        
+        st.subheader("Total OB Calls")
+        st.dataframe(ldb.sort_values('OB Calls', ascending=False)[['Advisor Name', 'OB Calls']], hide_index=True)
 
 # --- 9. TRENDS ---
 st.divider(); st.header("Performance Trends")
