@@ -14,19 +14,8 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
-# PRIVILEGED EMAILS
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
 TEAM_LEAD_EMAIL = "ayush.bhadauria@gohighlevel.com"
-
-# KPI TARGETS
-TARGETS = {
-    'IA_Hours': 360, # 6 hours in minutes
-    'Shift_Score': 80.0,
-    'Sent_Rate': 80.0,
-    'Satisfied_Survey': 80.0
-}
-
-st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
 # --- 2. HELPER FUNCTIONS ---
 def parse_time_to_minutes(time_str):
@@ -86,7 +75,6 @@ c1, c2 = st.columns([2, 8])
 with c1: st.image("https://s3.amazonaws.com/cdn.freshdesk.com/data/helpdesk/attachments/production/48175265495/original/PTXBCP40UHx-8LCKsM1zqLX-pq8nndFHSw.png?1641235482", width='stretch')
 with c2: st.title("The Go Getters"); st.subheader(f"Welcome {st.session_state['user_name']}!!")
 
-# Initial Filtering for specific user or full team
 full_kpi = kpi_df.copy() if is_privileged else kpi_df[kpi_df['Email'] == st.session_state['user_email']].copy()
 full_kpi['Date'] = pd.to_datetime(full_kpi['Date'], format="%b'%d'%y", errors='coerce')
 full_kpi = full_kpi.dropna(subset=['Date']).sort_values('Date')
@@ -100,7 +88,6 @@ if not full_dsat.empty:
 
 freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-# Selection Filters
 if freq == "Daily":
     sel = st.selectbox("Select Date:", sorted(full_kpi['Date'].unique(), reverse=True), format_func=lambda x: x.strftime('%d %b %Y'))
     f_kpi = full_kpi[full_kpi['Date'] == sel]
@@ -133,11 +120,9 @@ avg_sat = f_kpi['Satisfied Survey %'].mean()
 if is_privileged:
     shout_out = f_kpi[(f_kpi['Sent Rate %'] >= 80) & (f_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
     attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80) | (f_kpi['Satisfied Survey %'] < 80)]['Advisor Name'].unique()
-    st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. "
-            f"Satisfaction is {avg_sat:.1f}% with a {avg_sent:.1f}% sent rate. Shout-out: {', '.join(shout_out) if len(shout_out)>0 else 'None'}. "
-            f"Attention required for: {', '.join(attention) if len(attention)>0 else 'None'}.")
+    st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. Shout-out: {', '.join(shout_out) if len(shout_out)>0 else 'None'}.")
 else:
-    st.info(f"Summary for {sel}: You logged {format_minutes_to_hours(avg_ia_mins)} IA hours and a {avg_score:.1f}% Shift Score. Satisfaction: {avg_sat:.1f}%.")
+    st.info(f"Summary for {sel}: You logged {format_minutes_to_hours(avg_ia_mins)} IA hours and a {avg_score:.1f}% Shift Score.")
 
 # --- 7. PERFORMANCE SUMMARY ---
 st.header("Performance summary")
@@ -158,13 +143,18 @@ v[1].metric("Total Q/A Calls", int(f_kpi['Q/A Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call Abandons'].sum()))
 
-# --- 8. PRIVILEGED LEADERBOARDS ---
+# --- 8. PRIVILEGED LEADERBOARDS (FIXED ERROR) ---
 if is_privileged:
     st.divider(); st.header("🏆 Leaderboards")
     ldb = f_kpi.groupby('Advisor Name').agg({'Sent Rate %':'mean','Satisfied Survey %':'mean','Q/A Calls':'sum','OB Calls':'sum','Email':'first'}).reset_index()
+    
+    # SAFE MERGE FOR DSAT: Ensure 'Total DSAT' exists even if no data is found
     if not f_dsat.empty:
         dsat_counts = f_dsat.groupby('Email').size().reset_index(name='Total DSAT')
         ldb = ldb.merge(dsat_counts, on='Email', how='left').fillna(0)
+    
+    if 'Total DSAT' not in ldb.columns:
+        ldb['Total DSAT'] = 0
     
     col_l1, col_l2 = st.columns(2)
     with col_l1:
@@ -175,6 +165,7 @@ if is_privileged:
         st.dataframe(ldb.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Satisfied Survey %']].round(2), hide_index=True)
     with col_l2:
         st.subheader("Total DSAT Received")
+        # Safe to sort now that column existence is guaranteed
         st.dataframe(ldb.sort_values('Total DSAT', ascending=False)[['Advisor Name', 'Total DSAT']], hide_index=True)
         st.subheader("Total QA Calls")
         st.dataframe(ldb.sort_values('Q/A Calls', ascending=False)[['Advisor Name', 'Q/A Calls']], hide_index=True)
@@ -194,16 +185,10 @@ with t2:
 st.divider()
 st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
 if not f_dsat.empty:
-    # Display advisor name for privileged users, hide for advisors
     display_cols = ['Date', 'Advisor Name', 'Chat_Link', 'Feedback'] if is_privileged else ['Date', 'Chat_Link', 'Feedback']
-    st.dataframe(
-        f_dsat[display_cols].sort_values('Date', ascending=False), 
-        column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")}, 
-        hide_index=True,
-        width='stretch'
-    )
+    st.dataframe(f_dsat[display_cols].sort_values('Date', ascending=False), column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")}, hide_index=True, width='stretch')
 else:
-    st.info("Great job! No DSAT records found for this period.")
+    st.info("No DSAT records found for this period.")
 
 st.divider(); st.header("Detailed Report")
 st.dataframe(f_kpi.sort_values('Date', ascending=False), hide_index=True)
