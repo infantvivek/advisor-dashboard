@@ -54,7 +54,6 @@ def load_data(url, is_kpi=False):
 
 # --- 4. AUTHENTICATION ---
 if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
-
 if not st.session_state['authenticated']:
     st.title("The Go Getters Login")
     with st.form("Login"):
@@ -88,7 +87,6 @@ if not full_dsat.empty:
 
 freq = st.radio("Frequency:", ["Daily", "Weekly", "Monthly"], horizontal=True)
 
-# Selection Filters
 if freq == "Daily":
     sel = st.selectbox("Select Date:", sorted(full_kpi['Date'].unique(), reverse=True), format_func=lambda x: x.strftime('%d %b %Y'))
     f_kpi = full_kpi[full_kpi['Date'] == sel]
@@ -110,22 +108,28 @@ else:
         full_dsat['Month_Label'] = full_dsat['Date'].dt.strftime('%B %Y')
         f_dsat = full_dsat[full_dsat['Month_Label'] == sel]
 
-# --- 6. PERFORMANCE NARRATIVE ---
+# --- 6. KPI FILTERING (EXCLUDE 0 CSAT FOR AVERAGES) ---
+# Filter data where Total Survey > 0 for calculating Satisfaction/Sent Rate averages
+avg_kpi = f_kpi[f_kpi['Total Survey'] > 0].copy()
+
+# --- 7. PERFORMANCE NARRATIVE ---
 st.divider()
 st.subheader("Performance Narrative")
 avg_ia_mins = f_kpi['IA_Mins'].mean()
 avg_score = f_kpi['Shift_Score'].mean()
-avg_sent = f_kpi['Sent Rate %'].mean()
-avg_sat = f_kpi['Satisfied Survey %'].mean()
+# Use avg_kpi for quality metrics to exclude 0-survey days
+avg_sent = avg_kpi['Sent Rate %'].mean() if not avg_kpi.empty else 0
+avg_sat = avg_kpi['Satisfied Survey %'].mean() if not avg_kpi.empty else 0
 
 if is_privileged:
-    shout_out = f_kpi[(f_kpi['Sent Rate %'] >= 80) & (f_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
-    attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80) | (f_kpi['Satisfied Survey %'] < 80)]['Advisor Name'].unique()
-    st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. Shout-out: {', '.join(shout_out) if len(shout_out)>0 else 'None'}.")
+    shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
+    attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80)].merge(avg_kpi[avg_kpi['Satisfied Survey %'] < 80], how='outer')['Advisor Name'].unique()
+    st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. "
+            f"Satisfaction (excluding 0-survey advisors) is {avg_sat:.1f}% with a {avg_sent:.1f}% sent rate.")
 else:
-    st.info(f"Summary for {sel}: You logged {format_minutes_to_hours(avg_ia_mins)} IA hours and a {avg_score:.1f}% Shift Score.")
+    st.info(f"Summary for {sel}: Your average Satisfaction (excluding no-survey days) is {avg_sat:.1f}%.")
 
-# --- 7. PERFORMANCE SUMMARY ---
+# --- 8. PERFORMANCE SUMMARY ---
 st.header("Performance summary")
 def get_delta_color(val, target, is_ia=False):
     condition = val > target if is_ia else val >= target
@@ -134,6 +138,7 @@ def get_delta_color(val, target, is_ia=False):
 m = st.columns(5)
 m[0].metric("Avg Shift Score", f"{avg_score:.1f}%", delta="Goal: >80%", delta_color=get_delta_color(avg_score, 80))
 m[1].metric("Avg IA Hours", format_minutes_to_hours(avg_ia_mins), delta="Goal: >6h", delta_color=get_delta_color(avg_ia_mins, 360, True))
+# Metrics using avg_kpi to exclude 0-CSAT rows
 m[2].metric("Avg Sent Rate %", f"{avg_sent:.1f}%", delta="Goal: >=80%", delta_color=get_delta_color(avg_sent, 80))
 m[3].metric("Avg Satisfied Survey", f"{avg_sat:.1f}%", delta="Goal: >=80%", delta_color=get_delta_color(avg_sat, 80))
 m[4].metric("Total Survey", int(f_kpi['Total Survey'].sum()))
@@ -144,61 +149,60 @@ v[1].metric("Total Q/A Calls", int(f_kpi['Q/A Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call Abandons'].sum()))
 
-# --- 8. PRIVILEGED LEADERBOARDS ---
+# --- 9. PRIVILEGED LEADERBOARDS ---
 if is_privileged:
     st.divider(); st.header("🏆 Leaderboards")
-    ldb = f_kpi.groupby('Advisor Name').agg({'Sent Rate %':'mean','Satisfied Survey %':'mean','Q/A Calls':'sum','OB Calls':'sum','Email':'first'}).reset_index()
+    # Leaderboards group by Advisor Name and use quality-filtered data
+    ldb = avg_kpi.groupby('Advisor Name').agg({'Sent Rate %':'mean','Satisfied Survey %':'mean','Email':'first'}).reset_index()
+    ldb_vol = f_kpi.groupby('Advisor Name').agg({'Q/A Calls':'sum','OB Calls':'sum','Email':'first'}).reset_index()
     
     if not f_dsat.empty:
         dsat_counts = f_dsat.groupby('Email').size().reset_index(name='Total DSAT')
-        ldb = ldb.merge(dsat_counts, on='Email', how='left').fillna(0)
+        ldb_vol = ldb_vol.merge(dsat_counts, on='Email', how='left').fillna(0)
     
-    if 'Total DSAT' not in ldb.columns:
-        ldb['Total DSAT'] = 0
+    if 'Total DSAT' not in ldb_vol.columns: ldb_vol['Total DSAT'] = 0
     
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
-        st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95%") # Added description
+        st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
-        
         st.subheader("Avg Satisfied Survey")
         st.dataframe(ldb.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Satisfied Survey %']].round(2), hide_index=True)
     
     with col_l2:
         st.subheader("Total DSAT Received")
-        st.dataframe(ldb.sort_values('Total DSAT', ascending=False)[['Advisor Name', 'Total DSAT']], hide_index=True)
-        
+        st.dataframe(ldb_vol.sort_values('Total DSAT', ascending=False)[['Advisor Name', 'Total DSAT']], hide_index=True)
         st.subheader("Total QA Calls")
-        st.dataframe(ldb.sort_values('Q/A Calls', ascending=False)[['Advisor Name', 'Q/A Calls']], hide_index=True)
+        st.dataframe(ldb_vol.sort_values('Q/A Calls', ascending=False)[['Advisor Name', 'Q/A Calls']], hide_index=True)
         
     with col_l3:
         st.subheader("Avg Survey Sent %")
         st.dataframe(ldb.sort_values('Sent Rate %', ascending=False)[['Advisor Name', 'Sent Rate %']].round(2), hide_index=True)
-        
         st.subheader("Total OB Calls")
-        st.dataframe(ldb.sort_values('OB Calls', ascending=False)[['Advisor Name', 'OB Calls']], hide_index=True)
+        st.dataframe(ldb_vol.sort_values('OB Calls', ascending=False)[['Advisor Name', 'OB Calls']], hide_index=True)
 
-# --- 9. TRENDS ---
+# --- 10. TRENDS & REPORTS ---
 st.divider(); st.header("Performance Trends")
 chart_df = f_kpi.groupby('Date').mean(numeric_only=True).reset_index() if is_privileged else f_kpi
 t1, t2 = st.columns(2)
 with t1:
     st.plotly_chart(px.line(chart_df, x='Date', y='Shift_Score', title="Shift Score Trend", markers=True), width='stretch')
-    st.plotly_chart(px.line(chart_df, x='Date', y='Satisfied Survey %', title="Satisfied Survey Trend", markers=True), width='stretch')
+    # Satisfaction trend uses filtered data to exclude 0-survey markers
+    st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if is_privileged else avg_kpi, 
+                            x='Date', y='Satisfied Survey %', title="Satisfied Survey Trend (Excl. 0-survey days)", markers=True), width='stretch')
 with t2:
     st.plotly_chart(px.line(chart_df, x='Date', y='IA_Mins', title="IA Minutes Trend", markers=True), width='stretch')
-    st.plotly_chart(px.line(chart_df, x='Date', y='Sent Rate %', title="Survey Sent Trend", markers=True), width='stretch')
+    st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if is_privileged else avg_kpi, 
+                            x='Date', y='Sent Rate %', title="Survey Sent Trend (Excl. 0-survey days)", markers=True), width='stretch')
 
-# --- 10. DSAT ANALYSIS SECTION ---
+# DSAT & DETAILED REPORT
 st.divider()
 st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
 if not f_dsat.empty:
     display_cols = ['Date', 'Advisor Name', 'Chat_Link', 'Feedback'] if is_privileged else ['Date', 'Chat_Link', 'Feedback']
     st.dataframe(f_dsat[display_cols].sort_values('Date', ascending=False), column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")}, hide_index=True, width='stretch')
-else:
-    st.info("No DSAT records found for this period.")
 
 st.divider(); st.header("Detailed Report")
 st.dataframe(f_kpi.sort_values('Date', ascending=False), hide_index=True)
