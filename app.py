@@ -156,9 +156,10 @@ if is_privileged:
     if 'Total DSAT' not in ldb.columns:
         ldb['Total DSAT'] = 0
     
-    col_l1, col_l2, col_l3 = st.columns(3) # Use 3 columns for balanced layout
+    col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
+        st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95%") # Added description
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
         
@@ -173,7 +174,6 @@ if is_privileged:
         st.dataframe(ldb.sort_values('Q/A Calls', ascending=False)[['Advisor Name', 'Q/A Calls']], hide_index=True)
         
     with col_l3:
-        # NEW LEADERBOARD: Survey Sent %
         st.subheader("Avg Survey Sent %")
         st.dataframe(ldb.sort_values('Sent Rate %', ascending=False)[['Advisor Name', 'Sent Rate %']].round(2), hide_index=True)
         
