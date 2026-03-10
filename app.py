@@ -44,6 +44,7 @@ def load_data(url, is_kpi=False):
         if is_kpi:
             df['IA_Mins'] = df['IA_Hours'].apply(parse_time_to_minutes)
             df['Call_Mins'] = df['Advisor Call Time'].apply(parse_time_to_minutes)
+            # Shift Score = (Total Recorded Call Time) / (Total IA Hours)
             df['Shift_Score'] = (df['Call_Mins'] / df['IA_Mins'] * 100).fillna(0)
             numeric_cols = ['Sent Rate %', 'Satisfied Survey %', 'Call Abandons', 'MOB', 'OB Calls', 'Q/A Calls', 'Total Survey']
             for col in numeric_cols:
@@ -66,11 +67,10 @@ if not st.session_state['authenticated']:
                 st.rerun()
     st.stop()
 
-# --- 5. DATA PREP ---
+# --- 5. DATA PREP & DRILL-DOWN ---
 is_privileged = st.session_state['user_email'] in [MANAGER_EMAIL, TEAM_LEAD_EMAIL]
 kpi_df, dsat_df = load_data(KPI_URL, is_kpi=True), load_data(DSAT_URL)
 
-# Privileged User Drill-down Option
 drill_down_advisor = None
 view_mode = "Team Overview"
 
@@ -92,17 +92,14 @@ if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
     st.rerun()
 
-# Filter logic based on View Mode
+# Set context for filtering
 if not is_privileged:
-    # Standard Advisor View
     full_kpi = kpi_df[kpi_df['Email'] == st.session_state['user_email']].copy()
     active_email = st.session_state['user_email']
 elif view_mode == "Specific Advisor View":
-    # Manager mimicking an Advisor
     full_kpi = kpi_df[kpi_df['Advisor Name'] == drill_down_advisor].copy()
     active_email = full_kpi['Email'].iloc[0] if not full_kpi.empty else ""
 else:
-    # Manager Team Overview
     full_kpi = kpi_df.copy()
 
 full_kpi['Date'] = pd.to_datetime(full_kpi['Date'], format="%b'%d'%y", errors='coerce')
@@ -140,12 +137,11 @@ else:
         full_dsat['Month_Label'] = full_dsat['Date'].dt.strftime('%B %Y')
         f_dsat = full_dsat[full_dsat['Month_Label'] == sel]
 
-# --- 6. KPI FILTERING (EXCLUDE 0 CSAT FOR AVERAGES) ---
+# Exclude 0 survey days from quality averages
 avg_kpi = f_kpi[f_kpi['Total Survey'] > 0].copy()
 
-# --- 7. PERFORMANCE NARRATIVE ---
-st.divider()
-st.subheader("Performance Narrative")
+# --- 6. PERFORMANCE NARRATIVE ---
+st.divider(); st.subheader("Performance Narrative")
 avg_ia_mins = f_kpi['IA_Mins'].mean()
 avg_score = f_kpi['Shift_Score'].mean()
 avg_sent = avg_kpi['Sent Rate %'].mean() if not avg_kpi.empty else 0
@@ -156,11 +152,10 @@ if is_privileged and view_mode == "Team Overview":
     attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80)].merge(avg_kpi[avg_kpi['Satisfied Survey %'] < 80], how='outer')['Advisor Name'].unique()
     st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. Shout-out: {', '.join(shout_out) if len(shout_out)>0 else 'None'}.")
 else:
-    # Mimic Advisor View Narrative
     target_name = drill_down_advisor if drill_down_advisor else "Your"
     st.info(f"Summary for {sel}: {target_name} average Satisfaction (excluding no-survey days) is {avg_sat:.1f}%.")
 
-# --- 8. PERFORMANCE SUMMARY ---
+# --- 7. PERFORMANCE SUMMARY ---
 st.header("Performance summary")
 def get_delta_color(val, target, is_ia=False):
     condition = val > target if is_ia else val >= target
@@ -179,7 +174,7 @@ v[1].metric("Total Q/A Calls", int(f_kpi['Q/A Calls'].sum()))
 v[2].metric("Total MOB", int(f_kpi['MOB'].sum()))
 v[3].metric("Total Call Abandons", int(f_kpi['Call Abandons'].sum()))
 
-# --- 9. PRIVILEGED LEADERBOARDS (Show only in Team Overview) ---
+# --- 8. PRIVILEGED LEADERBOARDS ---
 if is_privileged and view_mode == "Team Overview":
     st.divider(); st.header("🏆 Leaderboards")
     ldb = avg_kpi.groupby('Advisor Name').agg({'Sent Rate %':'mean','Satisfied Survey %':'mean','Email':'first'}).reset_index()
@@ -192,6 +187,8 @@ if is_privileged and view_mode == "Team Overview":
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
+        # Added description for leaderboard
+        st.caption("Eligibility: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
         st.subheader("Avg Satisfied Survey")
@@ -207,11 +204,9 @@ if is_privileged and view_mode == "Team Overview":
         st.subheader("Total OB Calls")
         st.dataframe(ldb_vol.sort_values('OB Calls', ascending=False)[['Advisor Name', 'OB Calls']], hide_index=True)
 
-# --- 10. TRENDS ---
+# --- 9. TRENDS ---
 st.divider(); st.header("Performance Trends")
-# If Drill-down or Advisor View, use individual data. Otherwise, team averages.
 chart_df = f_kpi if (not is_privileged or view_mode == "Specific Advisor View") else f_kpi.groupby('Date').mean(numeric_only=True).reset_index()
-
 t1, t2 = st.columns(2)
 with t1:
     st.plotly_chart(px.line(chart_df, x='Date', y='Shift_Score', title="Shift Score Trend", markers=True), width='stretch')
@@ -222,9 +217,8 @@ with t2:
     st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if (is_privileged and view_mode == "Team Overview") else avg_kpi, 
                             x='Date', y='Sent Rate %', title="Survey Sent Trend (Excl. 0-survey days)", markers=True), width='stretch')
 
-# --- 11. DSAT & DETAILED REPORT ---
-st.divider()
-st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
+# --- 10. DSAT & DETAILED REPORT ---
+st.divider(); st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
 if not f_dsat.empty:
     display_cols = ['Date', 'Advisor Name', 'Chat_Link', 'Feedback'] if (is_privileged and view_mode == "Team Overview") else ['Date', 'Chat_Link', 'Feedback']
     st.dataframe(f_dsat[display_cols].sort_values('Date', ascending=False), column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")}, hide_index=True, width='stretch')
