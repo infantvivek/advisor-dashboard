@@ -14,7 +14,9 @@ TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5z
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
+# PRIVILEGED EMAILS (Managers and Team Leads)
 MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
+SR_MANAGER_EMAIL = "sumit.ludhwani@gohighlevel.com"
 TEAM_LEAD_EMAIL = "ayush.bhadauria@gohighlevel.com"
 
 # --- 2. HELPER FUNCTIONS ---
@@ -44,7 +46,6 @@ def load_data(url, is_kpi=False):
         if is_kpi:
             df['IA_Mins'] = df['IA_Hours'].apply(parse_time_to_minutes)
             df['Call_Mins'] = df['Advisor Call Time'].apply(parse_time_to_minutes)
-            # Shift Score = (Total Recorded Call Time) / (Total IA Hours)
             df['Shift_Score'] = (df['Call_Mins'] / df['IA_Mins'] * 100).fillna(0)
             numeric_cols = ['Sent Rate %', 'Satisfied Survey %', 'Call Abandons', 'MOB', 'OB Calls', 'Q/A Calls', 'Total Survey']
             for col in numeric_cols:
@@ -68,7 +69,8 @@ if not st.session_state['authenticated']:
     st.stop()
 
 # --- 5. DATA PREP & DRILL-DOWN ---
-is_privileged = st.session_state['user_email'] in [MANAGER_EMAIL, TEAM_LEAD_EMAIL]
+# Updated list to include Sr. Manager
+is_privileged = st.session_state['user_email'] in [MANAGER_EMAIL, SR_MANAGER_EMAIL, TEAM_LEAD_EMAIL]
 kpi_df, dsat_df = load_data(KPI_URL, is_kpi=True), load_data(DSAT_URL)
 
 drill_down_advisor = None
@@ -187,7 +189,6 @@ if is_privileged and view_mode == "Team Overview":
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
-        # Added description for leaderboard
         st.caption("Eligibility: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
