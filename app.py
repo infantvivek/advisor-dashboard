@@ -154,49 +154,59 @@ avg_kpi = f_kpi[f_kpi['Total Survey'] > 0].copy()
 # --- 6. ELABORATE PERFORMANCE NARRATIVE ---
 st.divider()
 st.subheader("📊 Performance Insight Summary")
-
 avg_ia_mins = f_kpi['IA_Mins'].mean()
 avg_score = f_kpi['Shift_Score'].mean()
 avg_sent = avg_kpi['Sent Rate %'].mean() if not avg_kpi.empty else 0
 avg_sat = avg_kpi['Satisfied Survey %'].mean() if not avg_kpi.empty else 0
-total_calls = f_kpi['OB Calls'].sum() + f_kpi['Q/A Calls'].sum()
+total_surveys = f_kpi['Total Survey'].sum()
+total_dsats = len(f_dsat)
 
+# Extensive Narrative Logic
+narrative = ""
 if is_privileged and view_mode == "Team Overview":
-    # Managers' Deep Dive Summary
+    narrative += f"### Team Summary for {sel}\n"
+    narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys. "
+    
+    if avg_sat >= 80:
+        narrative += "This aligns with our high-performance benchmark, reflecting strong customer sentiment. "
+    else:
+        narrative += "This is currently below our 80% target, indicating a need for targeted quality reviews. "
+
+    narrative += f"\n**Survey Engagement:** We recorded a Survey Sent Rate of **{avg_sent:.1f}%**. "
+    if avg_sent < 80:
+        narrative += "Attention is required here as low sent rates can skew data validity and hide potential customer pain points. "
+    else:
+        narrative += "Consistent survey distribution is ensuring we have a robust data set for analysis. "
+
+    narrative += f"\n**Actionable Feedback (DSAT):** There are **{total_dsats}** DSAT records for this period. "
+    if total_dsats > 0:
+        narrative += "Immediate focus should be placed on the feedback provided in the DSAT Analysis section to mitigate recurring issues. "
+    
     shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
-    attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80)].merge(avg_kpi[avg_kpi['Satisfied Survey %'] < 80], how='outer')['Advisor Name'].unique()
-    
-    col_n1, col_n2 = st.columns(2)
-    with col_n1:
-        st.markdown(f"""
-        ### **Team Qualitative Analysis**
-        For the period of **{sel}**, the team is maintaining a satisfaction baseline of **{avg_sat:.1f}%**. 
-        While the Sent Rate is at **{avg_sent:.1f}%**, focus should remain on advisors with high volume but low survey capture to ensure data reliability. 
-        **Success Champions:** {', '.join(shout_out) if len(shout_out)>0 else 'No advisors met the elite criteria this period.'}
-        """)
-    with col_n2:
-        st.markdown(f"""
-        ### **Efficiency & Operations**
-        The team logged an average of **{format_minutes_to_hours(avg_ia_mins)}** in Intelliassign, resulting in a total volume of **{int(total_calls)}** calls.
-        The current Shift Score is **{avg_score:.1f}%** against the 80% benchmark. 
-        **Coaching Opportunities:** {', '.join(attention) if len(attention)>0 else 'All advisors are currently meeting or exceeding core efficiency targets.'}
-        """)
+    if len(shout_out) > 0:
+        narrative += f"\n**Success Champions:** Shout-out to **{', '.join(shout_out)}** for maintaining elite quality and engagement levels."
 else:
-    # Advisors' Comprehensive Summary
     target_name = drill_down_advisor if drill_down_advisor else "Your"
-    status_ia = "✅ Meeting" if avg_ia_mins >= 360 else "⚠️ Below"
-    status_sat = "✅ Meeting" if avg_sat >= 80 else "⚠️ Below"
+    narrative += f"### Performance Deep-Dive: {target_name}\n"
+    narrative += f"During **{sel}**, your Satisfaction score averaged **{avg_sat:.1f}%**. "
     
-    st.markdown(f"""
-    ### **{target_name} Performance Breakdown**
-    During **{sel}**, {target_name.lower()} performance shows a Satisfaction Rate of **{avg_sat:.1f}%** across **{int(f_kpi['Total Survey'].sum())}** surveys.
-    
-    * **Engagement Quality:** {status_sat} the 80% Satisfaction target. {target_name} Sent Rate is **{avg_sent:.1f}%**, which is crucial for valid feedback loops.
-    * **Operational Footprint:** {target_name} logged **{format_minutes_to_hours(avg_ia_mins)}** IA Hours ({status_ia} 6h target) with a Shift Score of **{avg_score:.1f}%**.
-    * **Call Volume:** {target_name} handled a total of **{int(total_calls)}** interactions (OB & QA).
-    
-    **Actionable Insight:** {"Focus on increasing survey sent rates to capture more positive feedback." if avg_sent < 80 else "Continue maintaining high engagement quality; your efficiency metrics are currently stable."}
-    """)
+    if total_surveys == 0:
+        narrative += "You have not received any surveys for this period. Focus on increasing customer engagement to trigger survey distribution. "
+    else:
+        narrative += f"This score is based on **{int(total_surveys)}** customer responses. "
+
+    narrative += f"\n**Sent Rate Insights:** Your Survey Sent Rate is **{avg_sent:.1f}%**. "
+    if avg_sent >= 80:
+        narrative += "You are meeting the engagement target, ensuring your performance is accurately reflected in the data. "
+    else:
+        narrative += "Focus on sending surveys more consistently to hit the 80% benchmark. "
+
+    if total_dsats > 0:
+        narrative += f"\n**Feedback Alert:** You have **{total_dsats}** DSAT(s) to review. Please examine the 'DSAT Analysis' table below to identify specific areas for improvement."
+    else:
+        narrative += "\n**Excellence Note:** You have zero DSATs for this period—excellent work on maintaining high quality standards!"
+
+st.markdown(narrative)
 
 # --- 7. PERFORMANCE SUMMARY ---
 st.header("Performance summary")
