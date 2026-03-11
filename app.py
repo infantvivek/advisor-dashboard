@@ -150,20 +150,61 @@ else:
 # Exclude 0 survey days from quality averages
 avg_kpi = f_kpi[f_kpi['Total Survey'] > 0].copy()
 
-# --- 6. PERFORMANCE NARRATIVE ---
-st.divider(); st.subheader("Performance Narrative")
+
+# --- 6. ELABORATE PERFORMANCE NARRATIVE ---
+st.divider()
+st.subheader("Performance Narrative & Insights")
+
+# Core Averages
 avg_ia_mins = f_kpi['IA_Mins'].mean()
 avg_score = f_kpi['Shift_Score'].mean()
 avg_sent = avg_kpi['Sent Rate %'].mean() if not avg_kpi.empty else 0
 avg_sat = avg_kpi['Satisfied Survey %'].mean() if not avg_kpi.empty else 0
+total_dsats = len(f_dsat)
 
 if is_privileged and view_mode == "Team Overview":
+    # Elaborate Team Insight
     shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
     attention = f_kpi[(f_kpi['IA_Mins'] < 360) | (f_kpi['Shift_Score'] < 80)].merge(avg_kpi[avg_kpi['Satisfied Survey %'] < 80], how='outer')['Advisor Name'].unique()
-    st.info(f"Team Analysis for {sel}: Avg IA Hours are {format_minutes_to_hours(avg_ia_mins)} and Avg Shift Score is {avg_score:.1f}%. Shout-out: {', '.join(shout_out) if len(shout_out)>0 else 'None'}.")
+    
+    narrative = f"### Team Summary for {sel}\n"
+    narrative += f"The team is currently operating with an average **Shift Score of {avg_score:.1f}%** and **{format_minutes_to_hours(avg_ia_mins)}** of IA time per advisor. "
+    
+    # Gap Analysis
+    ia_gap = 360 - avg_ia_mins
+    if ia_gap > 0:
+        narrative += f"There is a current deficit of **{int(ia_gap)} minutes** per advisor to meet the 6h IA target. "
+    else:
+        narrative += "The team is successfully exceeding the 6h IA floor. "
+        
+    narrative += f"\n\n**Quality Oversight:** Customer Satisfaction is holding at **{avg_sat:.1f}%** (Target: 80%). "
+    narrative += f"We have recorded **{total_dsats} DSAT(s)** during this period, requiring active feedback loops. "
+    
+    if len(shout_out) > 0:
+        narrative += f"\n\n🌟 **Top Performers:** A special mention to {', '.join(shout_out)} for maintaining elite survey standards. "
+    if len(attention) > 0:
+        narrative += f"\n\n⚠️ **Coaching Focus:** Priority support recommended for {', '.join(attention)} to align with core KPI targets. "
+    
+    st.info(narrative)
 else:
+    # Elaborate Advisor Insight
     target_name = drill_down_advisor if drill_down_advisor else "Your"
-    st.info(f"Summary for {sel}: {target_name} average Satisfaction (excluding no-survey days) is {avg_sat:.1f}%.")
+    narrative = f"### {target_name} Detailed Insights for {sel}\n"
+    narrative += f"Performance for this period shows an average **Satisfaction score of {avg_sat:.1f}%**. "
+    
+    # KPI Specifics
+    status_msg = "✅ You are meeting the " if avg_score >= 80 else "❌ You are currently below the "
+    narrative += f"{status_msg}80% Shift Score benchmark with a current average of **{avg_score:.1f}%**. "
+    
+    ia_status = "exceeding" if avg_ia_mins >= 360 else "tracking under"
+    narrative += f"You are {ia_status} the 6h IA goal with **{format_minutes_to_hours(avg_ia_mins)}** logged. "
+    
+    if total_dsats > 0:
+        narrative += f"\n\n🔴 **Attention:** There are **{total_dsats} recorded DSAT(s)** for this duration. Reviewing the feedback in the DSAT Analysis section below is recommended for immediate course correction. "
+    else:
+        narrative += "\n\n🟢 **Quality Check:** Zero DSATs recorded for this period. Excellent consistency in customer interactions! "
+        
+    st.info(narrative)
 
 # --- 7. PERFORMANCE SUMMARY ---
 st.header("Performance summary")
