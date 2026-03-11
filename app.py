@@ -9,6 +9,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# ---  PAGE CONFIGURATION ---
+# Setting layout to "wide" allows the app to auto-adjust to the screen size
+st.set_page_config(
+    page_title="The Go Getters | Performance Portal", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
+
 # --- 1. DATA SOURCE LINKS ---
 TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=0&single=true&output=csv"
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
