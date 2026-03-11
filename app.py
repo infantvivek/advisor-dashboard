@@ -165,22 +165,22 @@ total_dsats = len(f_dsat)
 narrative = ""
 if is_privileged and view_mode == "Team Overview":
     narrative += f"### Team Summary for {sel}\n"
-    narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys. "
+    narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys."
     
     if avg_sat >= 80:
-        narrative += "This aligns with our high-performance benchmark, reflecting strong customer sentiment. "
+        narrative += "This aligns with our high-performance benchmark, reflecting strong customer sentiment.\n"
     else:
-        narrative += "This is currently below our 80% target, indicating a need for targeted quality reviews. "
+        narrative += "This is currently below our 80% target, indicating a need for targeted quality reviews.\n"
 
     narrative += f"\n**Survey Engagement:** We recorded a Survey Sent Rate of **{avg_sent:.1f}%**. "
     if avg_sent < 80:
-        narrative += "Attention is required here as low sent rates can skew data validity and hide potential customer pain points. "
+        narrative += "Attention is required here as low sent rates can skew data validity and hide potential customer pain points.\n"
     else:
-        narrative += "Consistent survey distribution is ensuring we have a robust data set for analysis. "
+        narrative += "Consistent survey distribution is ensuring we have a robust data set for analysis.\n"
 
     narrative += f"\n**Actionable Feedback (DSAT):** There are **{total_dsats}** DSAT records for this period. "
     if total_dsats > 0:
-        narrative += "Immediate focus should be placed on the feedback provided in the DSAT Analysis section to mitigate recurring issues. "
+        narrative += "Immediate focus should be placed on the feedback provided in the DSAT Analysis section to mitigate recurring issues.\n"
     
     shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
     if len(shout_out) > 0:
@@ -191,20 +191,20 @@ else:
     narrative += f"During **{sel}**, your Satisfaction score averaged **{avg_sat:.1f}%**. "
     
     if total_surveys == 0:
-        narrative += "You have not received any surveys for this period. Focus on increasing customer engagement to trigger survey distribution. "
+        narrative += "You have not received any surveys for this period. Focus on increasing customer engagement to trigger survey distribution.\n"
     else:
-        narrative += f"This score is based on **{int(total_surveys)}** customer responses. "
+        narrative += f"This score is based on **{int(total_surveys)}** customer responses.\n"
 
     narrative += f"\n**Sent Rate Insights:** Your Survey Sent Rate is **{avg_sent:.1f}%**. "
     if avg_sent >= 80:
-        narrative += "You are meeting the engagement target, ensuring your performance is accurately reflected in the data. "
+        narrative += "You are meeting the engagement target, ensuring your performance is accurately reflected in the data. \n"
     else:
-        narrative += "Focus on sending surveys more consistently to hit the 80% benchmark. "
+        narrative += "Focus on sending surveys more consistently to hit the 80% benchmark. \n"
 
     if total_dsats > 0:
-        narrative += f"\n**Feedback Alert:** You have **{total_dsats}** DSAT(s) to review. Please examine the 'DSAT Analysis' table below to identify specific areas for improvement."
+        narrative += f"\n**Feedback Alert:** You have **{total_dsats}** DSAT(s) to review. Please examine the 'DSAT Analysis' table below to identify specific areas for improvement.\n"
     else:
-        narrative += "\n**Excellence Note:** You have zero DSATs for this period—excellent work on maintaining high quality standards!"
+        narrative += "\n**Excellence Note:** You have zero DSATs for this period—excellent work on maintaining high quality standards!\n"
 
 st.markdown(narrative)
 
