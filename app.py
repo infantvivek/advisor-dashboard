@@ -9,23 +9,20 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# ---  PAGE CONFIGURATION ---
-# Setting layout to "wide" allows the app to auto-adjust to the screen size
-st.set_page_config(
-    page_title="The Go Getters | Performance Portal", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
-
-# --- 1. DATA SOURCE LINKS ---
+# --- 1. CONFIGURATION & ACCESS ---
 TEAM_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=0&single=true&output=csv"
 KPI_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=1918948844&single=true&output=csv"
 DSAT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8T5NPl5jhOiEIxvI5zo0MFE3CR3jaHPPW5I-9mK0k9WD8AMUZdMatNubJL3MYUo0HQT7sSrw84P2R/pub?gid=367459010&single=true&output=csv"
 
-# PRIVILEGED EMAILS (Managers and Team Leads)
-MANAGER_EMAIL = "vivek.j@gohighlevel.com" 
-SR_MANAGER_EMAIL = "sumit.ludhwani@gohighlevel.com"
-TEAM_LEAD_EMAIL = "ayush.bhadauria@gohighlevel.com"
+# SINGLE LIST PARAMETER FOR EASY USER MANAGEMENT
+PRIVILEGED_EMAILS = [
+    "vivek.j@gohighlevel.com", 
+    "sumit.ludhwani@gohighlevel.com", 
+    "ayush.bhadauria@gohighlevel.com",
+    "shelby@gohighlevel.com"
+]
+
+st.set_page_config(page_title="The Go Getters | Performance Portal", layout="wide")
 
 # --- 2. HELPER FUNCTIONS ---
 def parse_time_to_minutes(time_str):
@@ -77,8 +74,8 @@ if not st.session_state['authenticated']:
     st.stop()
 
 # --- 5. DATA PREP & DRILL-DOWN ---
-# Updated list to include Sr. Manager
-is_privileged = st.session_state['user_email'] in [MANAGER_EMAIL, SR_MANAGER_EMAIL, TEAM_LEAD_EMAIL]
+# Using the consolidated list for permission checks
+is_privileged = st.session_state['user_email'] in PRIVILEGED_EMAILS
 kpi_df, dsat_df = load_data(KPI_URL, is_kpi=True), load_data(DSAT_URL)
 
 drill_down_advisor = None
@@ -147,13 +144,11 @@ else:
         full_dsat['Month_Label'] = full_dsat['Date'].dt.strftime('%B %Y')
         f_dsat = full_dsat[full_dsat['Month_Label'] == sel]
 
-# Exclude 0 survey days from quality averages
+# Quality averages logic
 avg_kpi = f_kpi[f_kpi['Total Survey'] > 0].copy()
 
-
-# --- 6. ELABORATE PERFORMANCE NARRATIVE ---
-st.divider()
-st.subheader("📊 Performance Insight Summary")
+# --- 6. PERFORMANCE NARRATIVE ---
+st.divider(); st.subheader("Performance Narrative")
 avg_ia_mins = f_kpi['IA_Mins'].mean()
 avg_score = f_kpi['Shift_Score'].mean()
 avg_sent = avg_kpi['Sent Rate %'].mean() if not avg_kpi.empty else 0
@@ -161,50 +156,22 @@ avg_sat = avg_kpi['Satisfied Survey %'].mean() if not avg_kpi.empty else 0
 total_surveys = f_kpi['Total Survey'].sum()
 total_dsats = len(f_dsat)
 
-# Extensive Narrative Logic
 narrative = ""
 if is_privileged and view_mode == "Team Overview":
     narrative += f"### Team Summary for {sel}\n"
-    narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys."
-    
-    if avg_sat >= 80:
-        narrative += "This aligns with our high-performance benchmark, reflecting strong customer sentiment.\n"
-    else:
-        narrative += "This is currently below our 80% target, indicating a need for targeted quality reviews.\n"
-
-    narrative += f"\n**Survey Engagement:** We recorded a Survey Sent Rate of **{avg_sent:.1f}%**. "
-    if avg_sent < 80:
-        narrative += "Attention is required here as low sent rates can skew data validity and hide potential customer pain points.\n"
-    else:
-        narrative += "Consistent survey distribution is ensuring we have a robust data set for analysis.\n"
-
-    narrative += f"\n**Actionable Feedback (DSAT):** There are **{total_dsats}** DSAT records for this period. "
-    if total_dsats > 0:
-        narrative += "Immediate focus should be placed on the feedback provided in the DSAT Analysis section to mitigate recurring issues.\n"
-    
+    narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys. "
+    narrative += "This aligns with our high-performance benchmark" if avg_sat >= 80 else "This is currently below our 80% target"
+    narrative += f". \n**Survey Engagement:** Recorded a Survey Sent Rate of **{avg_sent:.1f}%**. "
+    if avg_sent < 80: narrative += "Attention required for data validity. "
+    narrative += f"\n**Actionable Feedback (DSAT):** There are **{total_dsats}** records for review. "
     shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
-    if len(shout_out) > 0:
-        narrative += f"\n**Success Champions:** Shout-out to **{', '.join(shout_out)}** for maintaining elite quality and engagement levels."
+    if len(shout_out) > 0: narrative += f"\n**Success Champions:** Shout-out to **{', '.join(shout_out)}**."
 else:
     target_name = drill_down_advisor if drill_down_advisor else "Your"
     narrative += f"### Performance Deep-Dive: {target_name}\n"
-    narrative += f"During **{sel}**, your Satisfaction score averaged **{avg_sat:.1f}%**. "
-    
-    if total_surveys == 0:
-        narrative += "You have not received any surveys for this period. Focus on increasing customer engagement to trigger survey distribution.\n"
-    else:
-        narrative += f"This score is based on **{int(total_surveys)}** customer responses.\n"
-
-    narrative += f"\n**Sent Rate Insights:** Your Survey Sent Rate is **{avg_sent:.1f}%**. "
-    if avg_sent >= 80:
-        narrative += "You are meeting the engagement target, ensuring your performance is accurately reflected in the data. \n"
-    else:
-        narrative += "Focus on sending surveys more consistently to hit the 80% benchmark. \n"
-
-    if total_dsats > 0:
-        narrative += f"\n**Feedback Alert:** You have **{total_dsats}** DSAT(s) to review. Please examine the 'DSAT Analysis' table below to identify specific areas for improvement.\n"
-    else:
-        narrative += "\n**Excellence Note:** You have zero DSATs for this period—excellent work on maintaining high quality standards!\n"
+    narrative += f"Average Satisfaction score: **{avg_sat:.1f}%** based on **{int(total_surveys)}** responses. "
+    narrative += f"\n**Sent Rate Insights:** Survey Sent Rate is **{avg_sent:.1f}%**. "
+    if total_dsats > 0: narrative += f"\n**Feedback Alert:** You have **{total_dsats}** DSAT(s). Review 'DSAT Analysis' below."
 
 st.markdown(narrative)
 
@@ -219,7 +186,7 @@ m[0].metric("Avg Shift Score", f"{avg_score:.1f}%", delta="Goal: >80%", delta_co
 m[1].metric("Avg IA Hours", format_minutes_to_hours(avg_ia_mins), delta="Goal: >6h", delta_color=get_delta_color(avg_ia_mins, 360, True))
 m[2].metric("Avg Sent Rate %", f"{avg_sent:.1f}%", delta="Goal: >=80%", delta_color=get_delta_color(avg_sent, 80))
 m[3].metric("Avg Satisfied Survey", f"{avg_sat:.1f}%", delta="Goal: >=80%", delta_color=get_delta_color(avg_sat, 80))
-m[4].metric("Total Survey", int(f_kpi['Total Survey'].sum()))
+m[4].metric("Total Survey", int(total_surveys))
 
 v = st.columns(4)
 v[0].metric("Total OB Calls", int(f_kpi['OB Calls'].sum()))
@@ -240,7 +207,7 @@ if is_privileged and view_mode == "Team Overview":
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
-        st.caption("Eligibility: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
+        st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
         st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
         st.subheader("Avg Satisfied Survey")
@@ -263,11 +230,11 @@ t1, t2 = st.columns(2)
 with t1:
     st.plotly_chart(px.line(chart_df, x='Date', y='Shift_Score', title="Shift Score Trend", markers=True), width='stretch')
     st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if (is_privileged and view_mode == "Team Overview") else avg_kpi, 
-                            x='Date', y='Satisfied Survey %', title="Satisfied Survey Trend (Excl. 0-survey days)", markers=True), width='stretch')
+                            x='Date', y='Satisfied Survey %', title="Satisfied Survey Trend", markers=True), width='stretch')
 with t2:
     st.plotly_chart(px.line(chart_df, x='Date', y='IA_Mins', title="IA Minutes Trend", markers=True), width='stretch')
     st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if (is_privileged and view_mode == "Team Overview") else avg_kpi, 
-                            x='Date', y='Sent Rate %', title="Survey Sent Trend (Excl. 0-survey days)", markers=True), width='stretch')
+                            x='Date', y='Sent Rate %', title="Survey Sent Trend", markers=True), width='stretch')
 
 # --- 10. DSAT & DETAILED REPORT ---
 st.divider(); st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
