@@ -251,4 +251,7 @@ else:
     st.info("No DSAT records found for this period.")
 
 st.divider(); st.header("Detailed Report")
-st.dataframe(f_kpi.sort_values('Date', ascending=False), hide_index=True)
+# FORMATTING DATE TO DD-MM-YYYY FOR DISPLAY
+kpi_display = f_kpi.copy()
+kpi_display['Date'] = kpi_display['Date'].dt.strftime('%d-%m-%Y')
+st.dataframe(kpi_display.sort_values('Date', ascending=False), hide_index=True)
