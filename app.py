@@ -235,12 +235,20 @@ with t2:
     st.plotly_chart(px.line(chart_df, x='Date', y='IA_Mins', title="IA Minutes Trend", markers=True), width='stretch')
     st.plotly_chart(px.line(avg_kpi.groupby('Date').mean(numeric_only=True).reset_index() if (is_privileged and view_mode == "Team Overview") else avg_kpi, 
                             x='Date', y='Sent Rate %', title="Survey Sent Trend", markers=True), width='stretch')
-
-# --- 10. DSAT & DETAILED REPORT ---
+# --- 10. DSAT ANALYSIS SECTION ---
 st.divider(); st.subheader(f"🚫 DSAT Analysis & Feedback ({len(f_dsat)})")
 if not f_dsat.empty:
-    display_cols = ['Date', 'Advisor Name', 'Chat_Link', 'Feedback'] if (is_privileged and view_mode == "Team Overview") else ['Date', 'Chat_Link', 'Feedback']
-    st.dataframe(f_dsat[display_cols].sort_values('Date', ascending=False), column_config={"Chat_Link": st.column_config.LinkColumn("View Chat")}, hide_index=True, width='stretch')
+    # FORMAT DATE TO DD-MM-YYYY
+    f_dsat['Formatted_Date'] = f_dsat['Date'].dt.strftime('%d-%m-%Y')
+    display_cols = ['Formatted_Date', 'Advisor Name', 'Chat_Link', 'Feedback'] if (is_privileged and view_mode == "Team Overview") else ['Formatted_Date', 'Chat_Link', 'Feedback']
+    st.dataframe(
+        f_dsat[display_cols].sort_values('Formatted_Date', ascending=False), 
+        column_config={"Chat_Link": st.column_config.LinkColumn("View Chat"), "Formatted_Date": "Date"}, 
+        hide_index=True, 
+        width='stretch'
+    )
+else:
+    st.info("No DSAT records found for this period.")
 
 st.divider(); st.header("Detailed Report")
 st.dataframe(f_kpi.sort_values('Date', ascending=False), hide_index=True)
