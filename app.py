@@ -207,14 +207,16 @@ if is_privileged and view_mode == "Team Overview":
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l1:
         st.subheader("🏆 Success Champions")
-        st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
-        sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
+        # Updated Criteria in Caption
+        st.caption("Criteria: Survey Sent Rate ≥ 85% and Satisfied Survey > 90% (Excludes 0-survey days)")
         
-        # UPDATED SORTING: Priority to Satisfied Survey %, then Sent Rate %
-        st.dataframe(
-            sc.sort_values(by=['Satisfied Survey %', 'Sent Rate %'], ascending=[False, False])[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], 
-            hide_index=True
-        )
+        # ELIGIBILITY FILTER: Sent >= 85%, Satisfied > 90%
+        sc = ldb[(ldb['Sent Rate %'] >= 85) & (ldb['Satisfied Survey %'] > 90)].copy()
+        
+        # MULTI-LEVEL SORT: Priority 1: Satisfied Survey (DESC), Priority 2: Sent Rate (DESC)
+        sc_sorted = sc.sort_values(by=['Satisfied Survey %', 'Sent Rate %'], ascending=[False, False])
+        
+        st.dataframe(sc_sorted[['Advisor Name', 'Satisfied Survey %', 'Sent Rate %']], hide_index=True)
         
         st.subheader("Avg Satisfied Survey")
         st.dataframe(ldb.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Satisfied Survey %']].round(2), hide_index=True)
