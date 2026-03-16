@@ -209,7 +209,13 @@ if is_privileged and view_mode == "Team Overview":
         st.subheader("🏆 Success Champions")
         st.caption("Criteria: Survey Sent Rate ≥ 80% and Satisfied Survey > 95% (Excludes 0-survey days)")
         sc = ldb[(ldb['Sent Rate %'] >= 80) & (ldb['Satisfied Survey %'] > 95)]
-        st.dataframe(sc.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], hide_index=True)
+        
+        # UPDATED SORTING: Priority to Satisfied Survey %, then Sent Rate %
+        st.dataframe(
+            sc.sort_values(by=['Satisfied Survey %', 'Sent Rate %'], ascending=[False, False])[['Advisor Name', 'Sent Rate %', 'Satisfied Survey %']], 
+            hide_index=True
+        )
+        
         st.subheader("Avg Satisfied Survey")
         st.dataframe(ldb.sort_values('Satisfied Survey %', ascending=False)[['Advisor Name', 'Satisfied Survey %']].round(2), hide_index=True)
     with col_l2:
@@ -222,7 +228,6 @@ if is_privileged and view_mode == "Team Overview":
         st.dataframe(ldb.sort_values('Sent Rate %', ascending=False)[['Advisor Name', 'Sent Rate %']].round(2), hide_index=True)
         st.subheader("Total OB Calls")
         st.dataframe(ldb_vol.sort_values('OB Calls', ascending=False)[['Advisor Name', 'OB Calls']], hide_index=True)
-
 # --- 9. TRENDS ---
 st.divider(); st.header("Performance Trends")
 chart_df = f_kpi if (not is_privileged or view_mode == "Specific Advisor View") else f_kpi.groupby('Date').mean(numeric_only=True).reset_index()
