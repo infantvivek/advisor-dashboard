@@ -160,8 +160,8 @@ narrative = ""
 if is_privileged and view_mode == "Team Overview":
     narrative += f"### Team Summary for {sel}\n"
     narrative += f"**Quality & Satisfaction Analysis:** The team currently maintains an average Satisfaction rate of **{avg_sat:.1f}%** across **{int(total_surveys)}** total surveys. "
-    narrative += "This aligns with our high-performance benchmark\n" if avg_sat >= 80 else "This is currently below our 80% target\n"
-    narrative += f". \n**Survey Engagement:** Recorded a Survey Sent Rate of **{avg_sent:.1f}%**. "
+    narrative += "This aligns with our high-performance benchmark.\n" if avg_sat >= 80 else "This is currently below our 80% target\n"
+    narrative += f"\n**Survey Engagement:** Recorded a Survey Sent Rate of **{avg_sent:.1f}%**.\n "
     if avg_sent < 80: narrative += "Attention required for data validity.\n "
     narrative += f"\n**Actionable Feedback (DSAT):** There are **{total_dsats}** records for review.\n "
     shout_out = avg_kpi[(avg_kpi['Sent Rate %'] >= 80) & (avg_kpi['Satisfied Survey %'] > 95)]['Advisor Name'].unique()
